@@ -1,0 +1,50 @@
+{
+  "id": "valheim",
+  "name": "Valheim",
+  "description": "Viking survival server",
+  "imageSource": "public",
+  "image": "lloesche/valheim-server",
+  "dataMount": "/config",
+  "query": {
+    "type": "a2s",
+    "port": 2457
+  },
+  "ports": [
+    {
+      "host": 2456,
+      "container": 2456,
+      "protocol": "udp"
+    },
+    {
+      "host": 2457,
+      "container": 2457,
+      "protocol": "udp"
+    },
+    {
+      "host": 2458,
+      "container": 2458,
+      "protocol": "udp"
+    }
+  ],
+  "environment": [
+    {
+      "key": "SERVER_NAME",
+      "value": "My Valheim Server",
+      "pinned": true
+    },
+    {
+      "key": "WORLD_NAME",
+      "value": "Dedicated",
+      "pinned": true
+    },
+    {
+      "key": "SERVER_PASS",
+      "value": "changeme",
+      "pinned": true
+    }
+  ],
+  "resources": {
+    "cpuLimit": 2,
+    "memoryLimit": 4048
+  }
+}

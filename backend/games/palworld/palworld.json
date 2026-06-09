@@ -1,0 +1,73 @@
+{
+  "id": "palworld",
+  "name": "Palworld",
+  "description": "",
+  "imageSource": "public",
+  "image": "thijsvanloef/palworld-server-docker:latest",
+  "dataMount": "/palworld",
+  "query": { "type": "a2s", "port": 27015 },
+  "ports": [
+    {
+      "host": 8211,
+      "container": 8211,
+      "protocol": "udp"
+    },
+    {
+      "host": 27015,
+      "container": 27015,
+      "protocol": "udp"
+    }
+  ],
+  "environment": [
+    {
+      "key": "PUID",
+      "value": "1000",
+      "pinned": false
+    },
+    {
+      "key": "PGID",
+      "value": "1000",
+      "pinned": false
+    },
+    {
+      "key": "PORT",
+      "value": "8211",
+      "pinned": false
+    },
+    {
+      "key": "PLAYERS",
+      "value": "8",
+      "pinned": false
+    },
+    {
+      "key": "SERVER_PASSWORD",
+      "value": "changeme",
+      "pinned": true
+    },
+    {
+      "key": "MULTITHREADING",
+      "value": "true",
+      "pinned": false
+    },
+    {
+      "key": "REST_API_ENABLED",
+      "value": "false",
+      "pinned": false
+    },
+    {
+      "key": "TZ",
+      "value": "UTC",
+      "pinned": false
+    },
+    {
+      "key": "SERVER_NAME",
+      "value": "Macacos",
+      "pinned": true
+    },
+    {
+      "key": "SERVER_DESCRIPTION",
+      "value": "Server",
+      "pinned": false
+    }
+  ]
+}

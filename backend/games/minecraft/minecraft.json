@@ -1,0 +1,42 @@
+{
+  "id": "minecraft",
+  "name": "Minecraft",
+  "description": "Java Edition survival server",
+  "imageSource": "public",
+  "image": "itzg/minecraft-server",
+  "dataMount": "/data",
+  "query": null,
+  "ports": [
+    {
+      "host": 25565,
+      "container": 25565,
+      "protocol": "tcp"
+    }
+  ],
+  "environment": [
+    {
+      "key": "EULA",
+      "value": "TRUE",
+      "pinned": true
+    },
+    {
+      "key": "MEMORY",
+      "value": "4G",
+      "pinned": true
+    },
+    {
+      "key": "MODE",
+      "value": "survival",
+      "pinned": true
+    }
+  ],
+  "resources": {
+    "cpuLimit": null,
+    "memoryLimit": null
+  },
+  "rcon": {
+    "enabled": true,
+    "port": 25555,
+    "password": "312123"
+  }
+}

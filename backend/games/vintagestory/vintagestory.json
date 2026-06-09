@@ -1,0 +1,27 @@
+{
+  "id": "vintagestory",
+  "name": "VintageStory",
+  "description": "",
+  "imageSource": "public",
+  "image": "zsuatem/vintagestory:latest",
+  "dataMount": "/vintagestory/data",
+  "query": null,
+  "ports": [
+    {
+      "host": 42420,
+      "container": 42420,
+      "protocol": "tcp"
+    },
+    {
+      "host": 42420,
+      "container": 42420,
+      "protocol": "udp"
+    }
+  ],
+  "environment": [],
+  "resources": {
+    "cpuLimit": 2,
+    "memoryLimit": 8096
+  },
+  "schedules": []
+}

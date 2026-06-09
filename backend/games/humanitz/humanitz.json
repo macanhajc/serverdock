@@ -1,0 +1,50 @@
+{
+  "id": "humanitz",
+  "name": "Humanitz",
+  "description": "",
+  "imageSource": "public",
+  "image": "indifferentbroccoli/humanitz-server-docker",
+  "dataMount": "/home/steam/server-files",
+  "query": null,
+  "ports": [
+    {
+      "host": 7777,
+      "container": 7777,
+      "protocol": "udp"
+    }
+  ],
+  "environment": [
+    {
+      "key": "PUID",
+      "value": "1000",
+      "pinned": false
+    },
+    {
+      "key": "PGID",
+      "value": "1000",
+      "pinned": false
+    },
+    {
+      "key": "UPDATE_ON_START",
+      "value": "true",
+      "pinned": false
+    },
+    {
+      "key": "PORT",
+      "value": "7777",
+      "pinned": false
+    },
+    {
+      "key": "QUERY_PORT",
+      "value": "25017",
+      "pinned": false
+    }
+  ],
+  "resources": {
+    "cpuLimit": null,
+    "memoryLimit": null
+  },
+  "rcon": {
+    "enabled": false
+  }
+}

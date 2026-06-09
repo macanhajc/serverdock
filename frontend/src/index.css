@@ -1,0 +1,194 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-bg: var(--bg);
+  --color-bg-1: var(--bg-1);
+  --color-bg-2: var(--bg-2);
+  --color-bg-3: var(--bg-3);
+  --color-bg-terminal: var(--bg-terminal);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent: var(--accent);
+  --color-green: var(--green);
+  --color-red: var(--red);
+  --color-yellow: var(--yellow);
+  --color-fill-online: var(--fill-online);
+  --color-fill-offline: var(--fill-offline);
+  --color-fill-pending: var(--fill-pending);
+  --color-log-info: var(--log-info);
+  --color-log-warn: var(--log-warn);
+  --color-log-error: var(--log-error);
+  --color-log-ok: var(--log-ok);
+  --color-log-debug: var(--log-debug);
+}
+
+/* ── Design system tokens ─────────────────────────────── */
+:root {
+  /* Surfaces */
+  --bg: #0f0f0f;
+  --bg-1: #141414;
+  --bg-2: #181818;
+  --bg-3: #1d1d1d;
+  --bg-terminal: #0a0a0a;
+
+  /* Borders */
+  --line: #2a2a2a;
+  --line-2: #353535;
+
+  /* Ink */
+  --ink: #e7e7e7;
+  --ink-2: #a3a3a3;
+  --ink-3: #6f6f6f;
+
+  /* Accent */
+  --accent: #3b82f6;
+  --accent-dim: color-mix(in oklab, var(--accent) 22%, transparent);
+  --accent-edge: color-mix(in oklab, var(--accent) 55%, transparent);
+
+  /* Status — fixed, never repurpose */
+  --green: #22c55e;
+  --red: #ef4444;
+  --yellow: #eab308;
+
+  /* Semantic aliases */
+  --surface-app: var(--bg);
+  --surface-card: var(--bg-1);
+  --surface-raised: var(--bg-2);
+  --surface-pressed: var(--bg-3);
+  --surface-code: var(--bg-terminal);
+  --border-default: var(--line);
+  --border-strong: var(--line-2);
+  --text-primary: var(--ink);
+  --text-secondary: var(--ink-2);
+  --text-muted: var(--ink-3);
+  --status-online: var(--green);
+  --status-offline: var(--red);
+  --status-pending: var(--yellow);
+
+  /* Log severity */
+  --log-info: #60a5fa;
+  --log-warn: var(--yellow);
+  --log-error: var(--red);
+  --log-ok: var(--green);
+  --log-debug: #8b8b8b;
+
+  /* Typography */
+  --font-sans: 'Helvetica Neue', Helvetica, Arial, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-ui: var(--font-sans);
+  --font-code: var(--font-mono);
+
+  --fs-display: 18px;
+  --fs-h1: 17px;
+  --fs-card: 15px;
+  --fs-body: 14px;
+  --fs-code: 13px;
+  --fs-small: 12px;
+  --fs-micro: 11px;
+  --fs-label: 10px;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-bold: 700;
+
+  --tracking-label: 0.08em;
+  --tracking-badge: 0.05em;
+  --tracking-tight: 0.01em;
+
+  /* Spacing */
+  --sp-0: 2px;
+  --sp-1: 4px;
+  --sp-2: 6px;
+  --sp-3: 8px;
+  --sp-4: 10px;
+  --sp-5: 12px;
+  --sp-6: 14px;
+  --sp-7: 16px;
+  --sp-8: 20px;
+  --sp-9: 24px;
+  --sp-10: 32px;
+
+  --pad-control: 7px 12px;
+  --pad-control-sm: 6px 10px;
+  --pad-card: 16px;
+  --pad-page: 20px 24px;
+  --gap-grid: 14px;
+  --gap-actions: 6px;
+
+  /* Layout */
+  --sidebar-w: 208px;
+  --topbar-h: 56px;
+  --thumb-h: 112px;
+  --row-pad: 16px;
+  --card-min: 300px;
+
+  /* Effects */
+  --radius-none: 0px;
+  --radius-dot: 50%;
+
+  --border-hairline: 1px solid var(--line);
+  --border-control: 1px solid var(--line-2);
+  --border-dashed: 1px dashed var(--line-2);
+  --border-accent: 1px solid var(--accent-edge);
+
+  --rail-accent: inset 2px 0 0 var(--accent);
+
+  --fill-online: color-mix(in oklab, var(--green) 12%, transparent);
+  --fill-offline: color-mix(in oklab, var(--red) 10%, transparent);
+  --fill-pending: color-mix(in oklab, var(--yellow) 12%, transparent);
+  --fill-accent: var(--accent-dim);
+
+  --focus-border: var(--accent-edge);
+
+  --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --dur-fast: 0.15s;
+  --dur-base: 0.2s;
+
+  --footer-blur: blur(6px);
+}
+
+[data-density='compact'] {
+  --row-pad: 10px;
+  --card-min: 260px;
+}
+[data-density='roomy'] {
+  --row-pad: 22px;
+  --card-min: 340px;
+}
+
+@keyframes ds-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.ds-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── Base reset ───────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100dvh;
+}

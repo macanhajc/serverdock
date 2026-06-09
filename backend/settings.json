@@ -1,0 +1,18 @@
+{
+  "dataRoot": "",
+  "serverHost": "",
+  "registrationOpen": true,
+  "discordWebhookUrl": "",
+  "vapidPublicKey": "BCMHBz3cUPS5DpWFzZJZ6NAqX2EWCy3Bkl9Oc9qRXcfU01FNvNbUc8Ho9Kk-bP018cXFaLdo4JWTBBPsw6bN14g",
+  "vapidPrivateKey": "IjlT1e2f9a49fIfpHngYTG4SS_1gpiHHjR98AdrmIJQ",
+  "pushSubscriptions": [
+    {
+      "endpoint": "https://updates.push.services.mozilla.com/wpush/v2/gAAAAABqJzUzL7RQu_2IrqDfeV_t9oaEYFiMaqheiG4_si7LxjHz3ugbGE68dVPe9u98IjMfxLgf9KB80SPUPrBA-3nqRB3F8XznD3dvGU2RNfnX6EzEM6QhQV0ViJlYL6TYq71_75BiSEQF74Z7sZ8OpKFdO988rZu-kxqTM2Fp38wF9atuwRk",
+      "expirationTime": null,
+      "keys": {
+        "auth": "5_pfGa4XxnHKKrwecU_GYQ",
+        "p256dh": "BJwrUpQrL1bxB8O1sMUxHnNxp1M9e2e-BUqVBwh1LQccSRxC1lIcjRIhtedXXFXlVdZPwDV4enHl1tIlep_ScWo"
+      }
+    }
+  ]
+}

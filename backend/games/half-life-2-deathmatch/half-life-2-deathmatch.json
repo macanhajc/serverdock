@@ -1,0 +1,52 @@
+{
+  "id": "half-life-2-deathmatch",
+  "name": "Half life 2: Deathmatch",
+  "description": "",
+  "imageSource": "public",
+  "image": "ich777/steamcmd:hl2dm",
+  "dataMount": "/data",
+  "query": {
+    "type": "a2s",
+    "port": 27015
+  },
+  "ports": [],
+  "environment": [
+    {
+      "key": "GAME_ID",
+      "value": "232370",
+      "pinned": false
+    },
+    {
+      "key": "GAME_NAME",
+      "value": "hl2mp",
+      "pinned": false
+    },
+    {
+      "key": "GAME_PARAMS",
+      "value": "+maxplayers 24 +map dm_lockdown",
+      "pinned": false
+    },
+    {
+      "key": "UID",
+      "value": "99",
+      "pinned": false
+    },
+    {
+      "key": "GID",
+      "value": "100",
+      "pinned": false
+    },
+    {
+      "key": "GAME_PORT",
+      "value": "27015",
+      "pinned": false
+    }
+  ],
+  "resources": {
+    "cpuLimit": null,
+    "memoryLimit": null
+  },
+  "rcon": {
+    "enabled": false
+  }
+}

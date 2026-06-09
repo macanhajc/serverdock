@@ -1,0 +1,18 @@
+[Unit]
+Description=ServerDock game server manager
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=macanha
+WorkingDirectory=/opt/serverdock/backend
+ExecStart=/usr/bin/node src/index.js
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=/opt/serverdock/backend/.env
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
