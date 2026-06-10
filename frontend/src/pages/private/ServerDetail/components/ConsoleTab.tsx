@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import socket from '../../../../socket';
+import { Button } from '../../../../components/core/Button';
+import { Toggle } from '../../../../components/core/Toggle';
 import { LogLine as LogLineComp } from '../../../../components/data/LogLine';
 import { SegmentedControl } from '../../../../components/forms/SegmentedControl';
 import type { Server, LogLine, RconEntry } from '../../../../types';
@@ -14,75 +16,71 @@ interface ConsoleTabProps {
   token: string | null;
   isRunning: boolean;
   rcon?: Server['rcon'];
+  /** The tab stays mounted in the background; true when it's the active tab */
+  visible?: boolean;
+  /** Live container output, owned by the parent (shared logs pipeline) */
+  lines: LogLine[];
+  setLines: React.Dispatch<React.SetStateAction<LogLine[]>>;
 }
 
-export function ConsoleTab({ id, token, isRunning, rcon }: ConsoleTabProps) {
+export function ConsoleTab({
+  id,
+  token,
+  isRunning,
+  rcon,
+  visible = true,
+  lines,
+  setLines,
+}: ConsoleTabProps) {
   const { t } = useTranslation();
 
-  const [consoleMode, setConsoleMode] = useState<'terminal' | 'rcon'>(
-    rcon?.enabled ? 'rcon' : 'terminal'
-  );
+  const [consoleMode, setConsoleMode] = useState<'terminal' | 'rcon'>('terminal');
 
-  const [consoleLines, setConsoleLines] = useState<LogLine[]>([]);
+  // Terminal (stdout/stderr) view — shares the parent's log pipeline
+  const [levelFilter, setLevelFilter] = useState('ALL');
+  const [autoscroll, setAutoscroll] = useState(true);
+  const [copied, setCopied] = useState(false);
   const [consoleInput, setConsoleInput] = useState('');
   const [cmdHistory, setCmdHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
-  const consoleTermRef = useRef<HTMLDivElement>(null);
-  const consoleInputRef = useRef<HTMLInputElement>(null);
+  const termRef = useRef<HTMLDivElement>(null);
 
+  // RCON view — request/response pairs, separate from stdout
   const [rconHistory, setRconHistory] = useState<RconEntry[]>([]);
   const [rconInput, setRconInput] = useState('');
   const [rconSending, setRconSending] = useState(false);
   const [rconCmdHistory, setRconCmdHistory] = useState<string[]>([]);
   const [rconHistoryIdx, setRconHistoryIdx] = useState(-1);
   const rconTermRef = useRef<HTMLDivElement>(null);
-  const rconInputRef = useRef<HTMLInputElement>(null);
   const rconSeqRef = useRef<number>(0);
 
+  const filteredLines =
+    levelFilter === 'ALL'
+      ? lines
+      : lines.filter(
+          (l) => l.level === levelFilter || l.level === 'DEBUG' || l.level === 'CMD'
+        );
+
+  // `visible` is a dep: scrollHeight is 0 while the tab is display:none, so the
+  // scroll must be re-applied when it becomes visible again
   useEffect(() => {
-    function onConsoleLine({ id: cid, line, level }: { id: string; line: string; level?: string }) {
-      if (cid !== id) return;
-      setConsoleLines((prev) => [
-        ...prev,
-        { ts: nowTs(), level: (level ?? 'info').toUpperCase(), line },
-      ]);
+    if (visible && autoscroll && consoleMode === 'terminal' && termRef.current) {
+      termRef.current.scrollTop = termRef.current.scrollHeight;
     }
-    function onConsoleEnd({ id: cid }: { id: string }) {
-      if (cid !== id) return;
-      setConsoleLines((prev) => [
-        ...prev,
-        { ts: nowTs(), level: 'DEBUG', line: t('serverDetail.containerStopped') },
-      ]);
-    }
-
-    socket.on('console:line', onConsoleLine);
-    socket.on('console:end', onConsoleEnd);
-    socket.emit('join:console', { id });
-
-    return () => {
-      socket.off('console:line', onConsoleLine);
-      socket.off('console:end', onConsoleEnd);
-      socket.emit('leave:console', { id });
-    };
-  }, [id, t]);
+  }, [lines, autoscroll, visible, consoleMode]);
 
   useEffect(() => {
-    if (consoleTermRef.current) {
-      consoleTermRef.current.scrollTop = consoleTermRef.current.scrollHeight;
-    }
-  }, [consoleLines]);
-
-  useEffect(() => {
-    if (rconTermRef.current) {
+    if (visible && consoleMode === 'rcon' && rconTermRef.current) {
       rconTermRef.current.scrollTop = rconTermRef.current.scrollHeight;
     }
-  }, [rconHistory]);
+  }, [rconHistory, visible, consoleMode]);
 
   function sendConsoleCommand() {
     const cmd = consoleInput.trim();
     if (!cmd || !isRunning) return;
     socket.emit('console:input', { id, input: cmd });
-    setConsoleLines((prev) => [...prev, { ts: nowTs(), level: 'CMD', line: `> ${cmd}` }]);
+    // Echo into the shared output stream so the command and its log output interleave
+    setLines((prev) => [...prev, { ts: nowTs(), level: 'CMD', line: `> ${cmd}` }]);
     setCmdHistory((prev) => [cmd, ...prev.slice(0, 49)]);
     setHistoryIdx(-1);
     setConsoleInput('');
@@ -107,6 +105,14 @@ export function ConsoleTab({ id, token, isRunning, rcon }: ConsoleTabProps) {
       setHistoryIdx(next);
       setConsoleInput(next === -1 ? '' : (cmdHistory[next] ?? ''));
     }
+  }
+
+  function copyLogs() {
+    const text = filteredLines.map((l) => `[${l.ts}] [${l.level}] ${l.line}`).join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
   }
 
   async function sendRcon() {
@@ -171,8 +177,9 @@ export function ConsoleTab({ id, token, isRunning, rcon }: ConsoleTabProps) {
 
   return (
     <div className="flex flex-col h-full">
-      {rcon?.enabled && (
-        <div className="flex items-center gap-4 px-6 py-2.5 border-b border-line bg-bg-1 flex-none">
+      {/* Controls bar */}
+      <div className="flex items-center gap-3.5 px-6 py-2.5 border-b border-line bg-bg-1 flex-none flex-wrap">
+        {rcon?.enabled && (
           <SegmentedControl
             options={[
               { label: 'Terminal', value: 'terminal' },
@@ -181,21 +188,66 @@ export function ConsoleTab({ id, token, isRunning, rcon }: ConsoleTabProps) {
             value={consoleMode}
             onChange={(v) => setConsoleMode(v as 'terminal' | 'rcon')}
           />
-          {consoleMode === 'rcon' && (
-            <span className="font-mono text-[11px] text-ink-3">{t('serverDetail.rconHint')}</span>
-          )}
-        </div>
-      )}
+        )}
+
+        {consoleMode === 'terminal' && (
+          <>
+            <div className="flex gap-1">
+              {['ALL', 'INFO', 'WARN', 'ERROR'].map((lvl) => (
+                <button
+                  key={lvl}
+                  onClick={() => setLevelFilter(lvl)}
+                  className={`font-mono text-xs tracking-wider px-2 py-1 border cursor-pointer ${
+                    levelFilter === lvl
+                      ? 'border-line-2 text-ink bg-bg-3'
+                      : 'border-line text-ink-3 bg-bg-2'
+                  }`}
+                >
+                  {lvl}
+                </button>
+              ))}
+            </div>
+            <div className="ml-auto flex items-center gap-3.5">
+              <span className="font-mono text-sm text-ink-3">
+                {levelFilter === 'ALL'
+                  ? t('serverDetail.lines', { count: lines.length })
+                  : t('serverDetail.linesFiltered', {
+                      shown: filteredLines.length,
+                      total: lines.length,
+                    })}
+              </span>
+              <Toggle
+                checked={autoscroll}
+                onChange={setAutoscroll}
+                label={t('serverDetail.autoScroll')}
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={copyLogs}
+                disabled={filteredLines.length === 0}
+              >
+                {copied ? t('serverDetail.copied') : t('serverDetail.copyLogs')}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setLines([])}>
+                {t('serverDetail.clear')}
+              </Button>
+            </div>
+          </>
+        )}
+
+        {consoleMode === 'rcon' && (
+          <span className="font-mono text-[11px] text-ink-3">{t('serverDetail.rconHint')}</span>
+        )}
+      </div>
 
       {consoleMode === 'terminal' && (
         <>
-          <div ref={consoleTermRef} className="flex-1 overflow-y-auto bg-bg-terminal p-[14px_20px]">
-            {!isRunning ? (
-              <span className="font-mono text-xs text-ink-3">{t('serverDetail.consoleNotRunning')}</span>
-            ) : consoleLines.length === 0 ? (
-              <span className="font-mono text-xs text-ink-3">{t('serverDetail.consoleWaiting')}</span>
-            ) : null}
-            {consoleLines.map((l, i) => (
+          <div ref={termRef} className="flex-1 overflow-y-auto bg-bg-terminal p-[14px_20px]">
+            {filteredLines.length === 0 && (
+              <span className="font-mono text-xs text-ink-3">{t('serverDetail.waitingLogs')}</span>
+            )}
+            {filteredLines.map((l, i) => (
               <LogLineComp key={i} ts={l.ts} level={l.level}>
                 {l.line}
               </LogLineComp>
@@ -204,7 +256,6 @@ export function ConsoleTab({ id, token, isRunning, rcon }: ConsoleTabProps) {
           <div className="flex items-center gap-0 border-t border-line bg-bg-1 flex-none">
             <span className="font-mono text-sm text-ink-3 px-4 shrink-0 select-none">›</span>
             <input
-              ref={consoleInputRef}
               type="text"
               value={consoleInput}
               onChange={(e) => setConsoleInput(e.target.value)}
@@ -260,7 +311,6 @@ export function ConsoleTab({ id, token, isRunning, rcon }: ConsoleTabProps) {
           <div className="flex items-center gap-0 border-t border-line bg-bg-1 flex-none">
             <span className="font-mono text-sm text-ink-3 px-4 shrink-0 select-none">›</span>
             <input
-              ref={rconInputRef}
               type="text"
               value={rconInput}
               onChange={(e) => setRconInput(e.target.value)}

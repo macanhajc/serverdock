@@ -1,0 +1,23 @@
+{
+  "id": "project-zomboid",
+  "name": "Project Zomboid",
+  "description": "Zombie apocalypse survival server",
+  "imageSource": "public",
+  "image": "renegademaster/zomboid-dedicated-server:latest",
+  "dataMount": "/home/steam/Zomboid",
+  "ports": [
+    { "host": 16261, "container": 16261, "protocol": "udp" },
+    { "host": 16262, "container": 16262, "protocol": "udp" }
+  ],
+  "environment": [
+    { "key": "SERVER_NAME", "value": "My Server", "pinned": true },
+    { "key": "ADMIN_PASSWORD", "value": "changeme", "pinned": true },
+    { "key": "MAX_PLAYERS", "value": "16", "pinned": false },
+    { "key": "MAX_RAM", "value": "4096m", "pinned": false }
+  ],
+  "rcon": { "enabled": false },
+  "resources": {
+    "cpuLimit": 2,
+    "memoryLimit": 4096
+  }
+}

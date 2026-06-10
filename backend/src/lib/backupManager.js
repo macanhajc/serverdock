@@ -1,7 +1,7 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { mkdir, rm, readdir, readFile, writeFile, unlink, access } from 'fs/promises';
-import { join } from 'path';
+import { mkdir, rm, rename, readdir, readFile, writeFile, unlink, access } from 'fs/promises';
+import { join, dirname } from 'path';
 import { randomUUID } from 'crypto';
 import { getDataRoot, getDataPath, getGame } from './gameLoader.js';
 import { getContainerStatus, stopContainer, startContainer } from './containers.js';
@@ -69,7 +69,27 @@ export async function createBackup(gameId, label) {
 
   await writeFile(sidecarPath, JSON.stringify(entry, null, 2), 'utf-8');
   logger.info({ gameId, backupId: id, size: entry.size }, 'backup created');
+
+  const keep = getGame(gameId)?.backupRetention;
+  if (Number.isInteger(keep) && keep > 0) {
+    await pruneBackups(gameId, keep).catch((err) =>
+      logger.warn({ err, gameId }, 'backup prune failed')
+    );
+  }
+
   return entry;
+}
+
+// Delete the oldest backups beyond `keep`. Returns the number removed.
+export async function pruneBackups(gameId, keep) {
+  if (!Number.isInteger(keep) || keep < 1) return 0;
+  const backups = await listBackups(gameId); // newest first
+  const excess = backups.slice(keep);
+  for (const b of excess) {
+    await deleteBackup(gameId, b.id);
+  }
+  if (excess.length) logger.info({ gameId, removed: excess.length, keep }, 'backups pruned');
+  return excess.length;
 }
 
 export async function restoreBackup(gameId, backupId) {
@@ -82,14 +102,33 @@ export async function restoreBackup(gameId, backupId) {
   }
 
   const dataDir = getDataPath(gameId);
+  const gameDir = dirname(dataDir);
+
+  // Extract into a temp dir first — if the archive is corrupt, live data is untouched
+  const tmpDir = join(gameDir, `.restore-${backupId}-${Date.now()}`);
+  await mkdir(tmpDir, { recursive: true });
+  try {
+    await execFileAsync('tar', ['-xzf', backupPath, '-C', tmpDir]);
+  } catch (err) {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    logger.warn({ err, gameId, backupId }, 'backup extract failed');
+    throw Object.assign(new Error('Backup archive is corrupt or unreadable'), { status: 500 });
+  }
+
   const status = await getContainerStatus(gameId);
   const wasRunning = status === 'running';
 
   if (wasRunning) await stopContainer(gameId);
 
-  await rm(dataDir, { recursive: true, force: true });
-  await mkdir(dataDir, { recursive: true });
-  await execFileAsync('tar', ['-xzf', backupPath, '-C', dataDir]);
+  const oldDir = join(gameDir, `.data-old-${Date.now()}`);
+  let hadData = true;
+  try {
+    await rename(dataDir, oldDir);
+  } catch {
+    hadData = false; // data dir didn't exist
+  }
+  await rename(tmpDir, dataDir);
+  if (hadData) await rm(oldDir, { recursive: true, force: true }).catch(() => {});
 
   if (wasRunning) {
     const game = getGame(gameId);

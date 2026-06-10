@@ -37,7 +37,9 @@ const io = new Server(httpServer, {
 });
 
 app.use(cors({ origin: corsOrigin }));
-app.use(express.json());
+// 1mb leaves headroom for the file manager's 512 KB edit ceiling plus JSON
+// escaping overhead (express.json defaults to 100kb, which would 413 mid-size edits).
+app.use(express.json({ limit: '1mb' }));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/servers', serverRoutes);

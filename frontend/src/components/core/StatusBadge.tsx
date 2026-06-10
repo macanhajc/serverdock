@@ -1,7 +1,16 @@
 import { HTMLAttributes } from 'react';
 import { useTranslation } from 'react-i18next';
 
-type BadgeStatus = 'online' | 'offline' | 'error' | 'starting' | 'built' | 'building' | 'none';
+type BadgeStatus =
+  | 'online'
+  | 'offline'
+  | 'error'
+  | 'starting'
+  | 'stopping'
+  | 'pulling'
+  | 'built'
+  | 'building'
+  | 'none';
 
 interface StatusStyle {
   color: string;
@@ -17,6 +26,18 @@ const STATUS_STYLE: Record<BadgeStatus, StatusStyle> = {
   offline: { color: 'var(--red)', edge: 'var(--red)', fill: 'var(--fill-offline)' },
   error: { color: 'var(--yellow)', edge: 'var(--yellow)', fill: 'var(--fill-pending)' },
   starting: {
+    color: 'var(--yellow)',
+    edge: 'var(--yellow)',
+    fill: 'var(--fill-pending)',
+    pulse: true,
+  },
+  stopping: {
+    color: 'var(--yellow)',
+    edge: 'var(--yellow)',
+    fill: 'var(--fill-pending)',
+    pulse: true,
+  },
+  pulling: {
     color: 'var(--yellow)',
     edge: 'var(--yellow)',
     fill: 'var(--fill-pending)',

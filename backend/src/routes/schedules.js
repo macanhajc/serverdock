@@ -3,9 +3,11 @@ import { randomUUID } from 'crypto';
 import cron from 'node-cron';
 import { verifyToken } from '../middleware/auth.js';
 import { getGame, saveGame } from '../lib/gameLoader.js';
-import { reloadGameSchedules, runScheduleNow } from '../lib/scheduler.js';
+import { reloadGameSchedules, runScheduleNow, getScheduleNextRun } from '../lib/scheduler.js';
 
 const router = Router();
+
+const withNextRun = (s) => ({ ...s, nextRun: getScheduleNextRun(s.id) });
 
 function validateTimezone(tz) {
   try {
@@ -20,7 +22,7 @@ function validateTimezone(tz) {
 router.get('/:id', verifyToken, (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
-  res.json(game.schedules ?? []);
+  res.json((game.schedules ?? []).map(withNextRun));
 });
 
 // POST /api/schedules/:id
@@ -60,7 +62,7 @@ router.post('/:id', verifyToken, async (req, res) => {
   await saveGame(req.params.id, { schedules });
   reloadGameSchedules(req.params.id);
 
-  res.status(201).json(newSchedule);
+  res.status(201).json(withNextRun(newSchedule));
 });
 
 // PUT /api/schedules/:id/:scheduleId
@@ -110,7 +112,7 @@ router.put('/:id/:scheduleId', verifyToken, async (req, res) => {
   await saveGame(req.params.id, { schedules });
   reloadGameSchedules(req.params.id);
 
-  res.json(updated);
+  res.json(withNextRun(updated));
 });
 
 // POST /api/schedules/:id/:scheduleId/run — trigger immediately
@@ -124,11 +126,11 @@ router.post('/:id/:scheduleId/run', verifyToken, async (req, res) => {
     await runScheduleNow(req.params.id, req.params.scheduleId);
     const updated = getGame(req.params.id);
     const schedule = (updated?.schedules ?? []).find((s) => s.id === req.params.scheduleId);
-    res.json(schedule ?? existing);
+    res.json(withNextRun(schedule ?? existing));
   } catch (err) {
     const updated = getGame(req.params.id);
     const schedule = (updated?.schedules ?? []).find((s) => s.id === req.params.scheduleId);
-    res.status(502).json({ error: err.message, schedule });
+    res.status(502).json({ error: err.message, schedule: schedule ? withNextRun(schedule) : undefined });
   }
 });
 

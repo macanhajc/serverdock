@@ -96,6 +96,12 @@ cd backend && node setup-auth.js --username admin --password yourpassword
 | `logs:<id>` | JWT required | Live container log stream for one server |
 | `build:<id>` | JWT required | Docker image build output for one game |
 
+**Events on the `status` room:** `status:update` / `status:all` (statuses + players), `pull:progress` (`{id, phase, percent}` during image downloads), `crash:alert` (`{id, name, status, exitInfo}`), `server:event` (`{type: action_failed | schedule_failed | schedule_executed | build_failed | build_complete, …}`), `docker:status` (`{available}` daemon reachability). Emission lives in `backend/src/lib/statusBus.js` — the single owner of lastKnown/transient status and admin-stop marks; the admin frontend listens globally in `ServerEventsBridge` (mounted in the admin layout), which also keeps the socket joined to `status` across navigation/reconnects.
+
+**Events on `logs:<id>`:** `log:line` (`{id, ts, line, level}` — `ts` is the Docker RFC3339 timestamp), `log:history` (ring-buffer replay sent to a socket when it joins; the client dedupes by `ts`), `log:end`. The backend keeps a ~300-line ring buffer per game in `socketHandlers.js`. Socket room cleanup must stay on the `disconnecting` event — `socket.rooms` is already empty in `disconnect`, which would leak attached Docker streams. Each stream's `end`/`error` handler must only evict its map slot if it's still the active one (`get(id) === slot`); otherwise a replaced stream's late `end` deletes its successor's slot, orphaning a live stream (double-emit + leak).
+
+**Console = logs + stdin.** There is no separate console output stream/room. The merged Console tab reads output from `logs:<id>` and sends input via the `console:input` socket event, which writes one line through a short-lived **stdin-only** attach (`sendStdinCommand` in `containers.js`, also used by the scheduler's `command` action) — `stdout/stderr` stay off so output is never double-read. RCON is unrelated: `POST /api/servers/:id/rcon`, request/response only.
+
 ---
 
 ## File Manager Rules
@@ -110,9 +116,9 @@ cd backend && node setup-auth.js --username admin --password yourpassword
 
 ## Container States
 
-`not_created` | `running` | `stopped` | `starting` | `restarting` | `pulling` | `building`
+`not_created` | `running` | `stopped` | `error` | `starting` | `stopping` | `restarting` | `pulling` | `building`
 
-State is always read from Docker — never stored in the app.
+Stable states (`not_created`/`running`/`stopped`/`error`) are always read from Docker — never stored in the app. `pulling`/`starting`/`stopping`/`restarting` are transient states broadcast by `statusBus` while a lifecycle operation is in flight (the status poll skips ids that have one). Every lifecycle phase and failure must be visible to the user: pull progress is streamed, action failures are broadcast as `server:event`, and unexpected exits always produce a `crash:alert` + Discord/push.
 
 ---
 

@@ -81,14 +81,20 @@ export default function PublicDashboard() {
         const map = new Map(snapshot.map((u) => [u.id, { status: u.status, players: u.players }]));
         return prev.map((s) => {
           const u = map.get(s.id);
-          return u ? { ...s, status: u.status, players: u.players ?? s.players } : s;
+          if (!u) return s;
+          const players = u.status === 'running' ? (u.players ?? s.players) : u.players;
+          return { ...s, status: u.status, players };
         });
       });
     });
 
     socket.on('status:update', ({ id, status, players }: { id: string; status: Server['status']; players: number | null }) => {
       setServers((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, status, players: players ?? s.players } : s))
+        prev.map((s) =>
+          s.id === id
+            ? { ...s, status, players: status === 'running' ? (players ?? s.players) : players }
+            : s
+        )
       );
     });
 

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { HostDisk, Server, ServerStats } from '../../../../types';
 import { fmtBytes } from '../../../../utils/format';
 
@@ -18,13 +19,15 @@ export function GlobalStatsCard({
   hostCpuModel,
   hostDisk,
 }: GlobalStatsCardProps) {
+  const { t } = useTranslation();
   const allStats = servers
     .filter((s) => s.status === 'running')
     .map((s) => serverStats[s.id])
     .filter(Boolean) as ServerStats[];
 
   const totalCpu = allStats.reduce((a, s) => a + s.cpu, 0);
-  const cpuPct = 0;
+  // per-container cpu is already a % of total host capacity, so the sum is too
+  const cpuPct = Math.min(totalCpu, 100);
   const totalMemUsed = allStats.reduce((a, s) => a + s.memUsed, 0);
   const totalNetIn = allStats.reduce((a, s) => a + s.netInRate, 0);
   const totalNetOut = allStats.reduce((a, s) => a + s.netOutRate, 0);
@@ -37,13 +40,17 @@ export function GlobalStatsCard({
     <div className="border border-line bg-bg-1 grid grid-cols-4">
       {/* CPU */}
       <div className="px-5 py-4 border-r border-line">
-        <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">CPU</div>
+        <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+          {t('adminDashboard.statCpu')}
+        </div>
         <div className="flex items-baseline gap-2 mb-3">
           <span className="text-[26px] font-bold tabular-nums font-mono leading-none">
             {totalCpu.toFixed(1)}
           </span>
           <span className="font-mono text-sm text-ink-3">
-            {hostCpuCount ? `% / ${hostCpuCount} cores` : '% combined'}
+            {hostCpuCount
+              ? t('adminDashboard.cpuOfCores', { cores: hostCpuCount })
+              : t('adminDashboard.cpuCombined')}
           </span>
         </div>
 
@@ -66,7 +73,9 @@ export function GlobalStatsCard({
 
       {/* RAM */}
       <div className="px-5 py-4 border-r border-line">
-        <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">RAM</div>
+        <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+          {t('adminDashboard.statRam')}
+        </div>
         <div className="flex items-baseline gap-2 mb-3">
           <span className="text-[26px] font-bold tabular-nums font-mono leading-none">
             {fmtBytes(totalMemUsed)}
@@ -86,13 +95,17 @@ export function GlobalStatsCard({
           </div>
         )}
         {ramMax && (
-          <div className="font-mono text-[11px] text-ink-3 mt-2">{fmtBytes(ramMax)} total</div>
+          <div className="font-mono text-[11px] text-ink-3 mt-2">
+            {t('adminDashboard.ramTotal', { size: fmtBytes(ramMax) })}
+          </div>
         )}
       </div>
 
       {/* Disk */}
-      <div className="px-5 py-4">
-        <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">Disk</div>
+      <div className="px-5 py-4 border-r border-line">
+        <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+          {t('adminDashboard.statDisk')}
+        </div>
         {hostDisk ? (
           <>
             <div className="flex items-baseline gap-2 mb-3">
@@ -117,9 +130,9 @@ export function GlobalStatsCard({
       </div>
 
       {/* Network */}
-      <div className="px-5 py-4 border-r border-line">
+      <div className="px-5 py-4">
         <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
-          Network
+          {t('adminDashboard.statNetwork')}
         </div>
         <div className="font-mono text-sm text-ink-3 flex flex-col gap-1">
           <span>

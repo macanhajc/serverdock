@@ -1,23 +1,17 @@
 import cron from 'node-cron';
-import docker from './docker.js';
 import { getGame, saveGame } from './gameLoader.js';
-import { startContainer, stopContainer, restartContainer } from './containers.js';
+import {
+  startContainer,
+  stopContainer,
+  restartContainer,
+  sendStdinCommand,
+} from './containers.js';
 import { createBackup } from './backupManager.js';
+import { emitServerEvent } from './statusBus.js';
+import { sendEventNotification } from './notifier.js';
 import logger from './logger.js';
 
 const jobs = new Map(); // scheduleId -> { task, gameId }
-
-async function sendCommandToContainer(gameId, command) {
-  const container = docker.getContainer(`serverdock-${gameId}`);
-  const stream = await new Promise((resolve, reject) => {
-    container.attach(
-      { stream: true, stdin: true, stdout: false, stderr: false },
-      (err, s) => (err ? reject(err) : resolve(s))
-    );
-  });
-  stream.write(`${command}\n`);
-  stream.end();
-}
 
 async function updateLastRun(gameId, scheduleId, ok) {
   const game = getGame(gameId);
@@ -34,7 +28,7 @@ async function executeSchedule(gameId, schedule) {
   if (schedule.action === 'start') await startContainer(game);
   else if (schedule.action === 'stop') await stopContainer(gameId);
   else if (schedule.action === 'restart') await restartContainer(gameId);
-  else if (schedule.action === 'command') await sendCommandToContainer(gameId, schedule.command ?? '');
+  else if (schedule.action === 'command') await sendStdinCommand(gameId, schedule.command ?? '');
   else if (schedule.action === 'backup') await createBackup(gameId, `Scheduled — ${schedule.label}`);
   else throw new Error(`Unknown action: ${schedule.action}`);
 }
@@ -60,9 +54,30 @@ export function registerSchedule(gameId, schedule) {
     try {
       await executeSchedule(gameId, schedule);
       logger.info({ gameId, scheduleId: schedule.id, action: schedule.action }, 'scheduled action executed');
+      emitServerEvent({
+        type: 'schedule_executed',
+        id: gameId,
+        name: game.name,
+        action: schedule.action,
+        label: schedule.label,
+      });
     } catch (err) {
       ok = false;
       logger.warn({ err, gameId, scheduleId: schedule.id, action: schedule.action }, 'scheduled action failed');
+      // Cron runs are unattended — surface the failure in-app and out-of-band
+      emitServerEvent({
+        type: 'schedule_failed',
+        id: gameId,
+        name: game.name,
+        action: schedule.action,
+        label: schedule.label,
+        message: err.message,
+      });
+      sendEventNotification(
+        'Scheduled Action Failed',
+        `${game.name}: schedule "${schedule.label}" (${schedule.action}) failed — ${err.message}`,
+        gameId
+      ).catch(() => {});
     } finally {
       updateLastRun(gameId, schedule.id, ok).catch(() => {});
     }
@@ -70,6 +85,18 @@ export function registerSchedule(gameId, schedule) {
 
   if (schedule.enabled) task.start();
   jobs.set(schedule.id, { task, gameId });
+}
+
+// Next scheduled fire time as ISO string, or null (disabled / unknown schedule)
+export function getScheduleNextRun(scheduleId) {
+  const entry = jobs.get(scheduleId);
+  if (!entry) return null;
+  try {
+    const next = entry.task.getNextRun();
+    return next ? next.toISOString() : null;
+  } catch {
+    return null;
+  }
 }
 
 export function unregisterSchedule(scheduleId) {

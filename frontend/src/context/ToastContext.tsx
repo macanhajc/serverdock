@@ -9,12 +9,13 @@ interface Toast {
 }
 
 interface ToastContextValue {
-  addToast: (message: string, variant?: ToastVariant) => void;
+  addToast: (message: string, variant?: ToastVariant, duration?: number) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
-const DURATION = 3000;
+// Errors must not vanish before they're read
+const DURATION: Record<ToastVariant, number> = { success: 3000, info: 4000, error: 8000 };
 
 function ToastBanner({ id, message, variant, onDismiss }: Toast & { onDismiss: (id: string) => void }) {
   const colorCls =
@@ -57,10 +58,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addToast = useCallback(
-    (message: string, variant: ToastVariant = 'success') => {
+    (message: string, variant: ToastVariant = 'success', duration?: number) => {
       const id = `${Date.now()}-${Math.random()}`;
       setToasts((prev) => [...prev, { id, message, variant }]);
-      setTimeout(() => dismiss(id), DURATION);
+      setTimeout(() => dismiss(id), duration ?? DURATION[variant]);
     },
     [dismiss]
   );

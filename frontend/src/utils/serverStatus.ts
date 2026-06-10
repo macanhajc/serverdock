@@ -9,12 +9,16 @@ export function toUiStatus(status: ContainerStatus | string): UiStatus {
     case 'not_created': return 'offline';
     case 'error':       return 'error';
     case 'starting':
-    case 'restarting':
-    case 'pulling':     return 'starting';
+    case 'restarting':  return 'starting';
+    case 'stopping':    return 'stopping';
+    case 'pulling':     return 'pulling';
     case 'building':    return 'building';
     default:            return 'offline';
   }
 }
+
+// Statuses owned by an in-flight operation — actions stay disabled while one is active
+export const IN_FLIGHT: string[] = ['pulling', 'starting', 'stopping', 'restarting', 'building'];
 
 export function gameHue(id: string): number {
   let h = 0;

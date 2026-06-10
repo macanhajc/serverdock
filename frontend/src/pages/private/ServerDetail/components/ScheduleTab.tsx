@@ -3,36 +3,46 @@ import { useTranslation } from 'react-i18next';
 import { useToast } from '../../../../context/ToastContext';
 import { Button } from '../../../../components/core/Button';
 import { Toggle } from '../../../../components/core/Toggle';
+import { ConfirmModal } from '../../../../components/core/ConfirmModal';
 import { SegmentedControl } from '../../../../components/forms/SegmentedControl';
 import type { ScheduleEntry, ScheduleFormState } from '../../../../types';
 
 // ─── Cron helpers ─────────────────────────────────────────────────────────────
 
-const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+type TFunc = (key: string, opts?: Record<string, unknown>) => string;
 
-function previewCron(expr: string): string {
+function dayName(dow: number, lang: string): string {
+  const d = new Date(Date.UTC(2023, 0, 1 + dow)); // 2023-01-01 was a Sunday
+  return new Intl.DateTimeFormat(lang, { weekday: 'long', timeZone: 'UTC' }).format(d);
+}
+
+function previewCron(expr: string, t: TFunc, lang: string): string {
   const parts = (expr ?? '').trim().split(/\s+/);
-  if (parts.length !== 5) return 'Custom schedule';
+  if (parts.length !== 5) return t('serverDetail.cronCustom');
   const [min, hour, dom, month, dow] = parts;
   if (/^\*\/\d+$/.test(min) && hour === '*' && dom === '*' && month === '*' && dow === '*') {
     const n = parseInt(min.slice(2), 10);
-    if (n > 0) return `Every ${n} minute${n === 1 ? '' : 's'}`;
+    if (n > 0) return t('serverDetail.cronEveryNMinutes', { count: n });
   }
   if (min === '0' && /^\*\/\d+$/.test(hour) && dom === '*' && month === '*' && dow === '*') {
     const h = parseInt(hour.slice(2), 10);
-    if (h > 0) return `Every ${h} hour${h === 1 ? '' : 's'}`;
+    if (h > 0) return t('serverDetail.cronEveryNHours', { count: h });
   }
   if (min === '0' && /^\d{1,2}$/.test(hour) && dom === '*' && month === '*' && /^\d$/.test(dow)) {
     const h = parseInt(hour, 10);
     const d = parseInt(dow, 10);
     if (h >= 0 && h <= 23 && d >= 0 && d <= 6)
-      return `Every ${DAYS[d]} at ${String(h).padStart(2, '0')}:00`;
+      return t('serverDetail.cronWeeklyAt', {
+        day: dayName(d, lang),
+        time: `${String(h).padStart(2, '0')}:00`,
+      });
   }
   if (min === '0' && /^\d{1,2}$/.test(hour) && dom === '*' && month === '*' && dow === '*') {
     const h = parseInt(hour, 10);
-    if (h >= 0 && h <= 23) return `Every day at ${String(h).padStart(2, '0')}:00`;
+    if (h >= 0 && h <= 23)
+      return t('serverDetail.cronDailyAt', { time: `${String(h).padStart(2, '0')}:00` });
   }
-  return 'Custom schedule';
+  return t('serverDetail.cronCustom');
 }
 
 const ACTION_STYLE: Record<string, { color: string; bg: string }> = {
@@ -54,31 +64,38 @@ function relativeTime(isoString: string): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+function relativeFuture(iso: string): string {
+  const diff = new Date(iso).getTime() - Date.now();
+  if (diff <= 0) return '<1m';
+  const m = Math.ceil(diff / 60000);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return m % 60 ? `${h}h ${m % 60}m` : `${h}h`;
+  const d = Math.floor(h / 24);
+  return h % 24 ? `${d}d ${h % 24}h` : `${d}d`;
+}
+
 // ─── ScheduleForm ─────────────────────────────────────────────────────────────
 
 const CRON_FIELDS = [
-  { label: 'minute', range: '0–59' },
-  { label: 'hour', range: '0–23' },
-  { label: 'day', range: '1–31' },
-  { label: 'month', range: '1–12' },
-  { label: 'weekday', range: '0–6' },
+  { key: 'cronFieldMinute', range: '0–59' },
+  { key: 'cronFieldHour', range: '0–23' },
+  { key: 'cronFieldDay', range: '1–31' },
+  { key: 'cronFieldMonth', range: '1–12' },
+  { key: 'cronFieldWeekday', range: '0–6' },
 ];
 
-const CRON_EXAMPLES = [
-  { expr: '0 4 * * *', desc: 'Every day at 04:00' },
-  { expr: '0 */6 * * *', desc: 'Every 6 hours' },
-  { expr: '0 3 * * 0', desc: 'Every Sunday at 03:00' },
-  { expr: '*/30 * * * *', desc: 'Every 30 minutes' },
-];
+const CRON_EXAMPLES = ['0 4 * * *', '0 */6 * * *', '0 3 * * 0', '*/30 * * * *'];
 
 interface ScheduleFormProps {
   form: ScheduleFormState;
   setForm: React.Dispatch<React.SetStateAction<ScheduleFormState>>;
   onCronPick: (expr: string) => void;
-  t: (key: string, opts?: Record<string, unknown>) => string;
 }
 
-function ScheduleForm({ form, setForm, onCronPick, t }: ScheduleFormProps) {
+function ScheduleForm({ form, setForm, onCronPick }: ScheduleFormProps) {
+  const { t, i18n } = useTranslation();
+
   return (
     <>
       <div className="flex flex-col gap-1.5">
@@ -138,17 +155,19 @@ function ScheduleForm({ form, setForm, onCronPick, t }: ScheduleFormProps) {
           style={{ borderRadius: 0 }}
         />
         {form.cron.trim() && (
-          <span className="font-mono text-xs text-ink-3">{previewCron(form.cron)}</span>
+          <span className="font-mono text-xs text-ink-3">
+            {previewCron(form.cron, t, i18n.language)}
+          </span>
         )}
         <div className="mt-1 border border-line bg-bg-2 px-3 py-3 flex flex-col gap-3">
           <div className="flex gap-0 font-mono text-[11px] text-center">
             {CRON_FIELDS.map((f, i, arr) => (
-              <div key={f.label} className="flex items-center">
+              <div key={f.key} className="flex items-center">
                 <div
                   className="flex flex-col items-center px-3 py-1 gap-0.5"
                   style={{ background: 'color-mix(in oklab, var(--accent) 8%, transparent)' }}
                 >
-                  <span className="text-accent font-semibold">{f.label}</span>
+                  <span className="text-accent font-semibold">{t(`serverDetail.${f.key}`)}</span>
                   <span className="text-ink-3">{f.range}</span>
                 </div>
                 {i < arr.length - 1 && <span className="text-ink-3 px-1">·</span>}
@@ -156,7 +175,7 @@ function ScheduleForm({ form, setForm, onCronPick, t }: ScheduleFormProps) {
             ))}
           </div>
           <div className="flex flex-col gap-1">
-            {CRON_EXAMPLES.map(({ expr, desc }) => (
+            {CRON_EXAMPLES.map((expr) => (
               <button
                 key={expr}
                 type="button"
@@ -164,16 +183,13 @@ function ScheduleForm({ form, setForm, onCronPick, t }: ScheduleFormProps) {
                 className="flex items-center gap-3 px-2 py-1 text-left hover:bg-bg-1 cursor-pointer border-0 bg-transparent w-full"
               >
                 <code className="font-mono text-xs text-accent w-28 shrink-0">{expr}</code>
-                <span className="font-mono text-xs text-ink-3">{desc}</span>
+                <span className="font-mono text-xs text-ink-3">
+                  {previewCron(expr, t, i18n.language)}
+                </span>
               </button>
             ))}
           </div>
-          <p className="m-0 font-mono text-[10px] text-ink-3">
-            Use <code className="text-ink-2">*</code> for any,{' '}
-            <code className="text-ink-2">*/n</code> for every n,{' '}
-            <code className="text-ink-2">0</code>/<code className="text-ink-2">7</code> = Sunday for
-            weekday.
-          </p>
+          <p className="m-0 font-mono text-[10px] text-ink-3">{t('serverDetail.cronHelpText')}</p>
         </div>
       </div>
 
@@ -213,7 +229,7 @@ interface ScheduleTabProps {
 }
 
 export function ScheduleTab({ id, token }: ScheduleTabProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { addToast } = useToast();
 
   const [schedules, setSchedules] = useState<ScheduleEntry[]>([]);
@@ -227,6 +243,7 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
   const [editError, setEditError] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [runningId, setRunningId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<ScheduleEntry | null>(null);
 
   useEffect(() => {
     setSchedulesLoading(true);
@@ -240,11 +257,11 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
   async function createSchedule() {
     const { label, action, cron, command, timezone } = addForm;
     if (!label.trim() || !cron.trim()) {
-      setAddError('Label and cron expression are required');
+      setAddError(t('serverDetail.scheduleRequired'));
       return;
     }
     if (action === 'command' && !command.trim()) {
-      setAddError('Command is required for command action');
+      setAddError(t('serverDetail.scheduleCommandRequired'));
       return;
     }
     setAddSaving(true);
@@ -264,7 +281,7 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setAddError(data.error ?? 'Failed to create schedule');
+        setAddError(data.error ?? t('serverDetail.scheduleCreateFailed'));
         return;
       }
       setSchedules((prev) => [...prev, data]);
@@ -272,7 +289,7 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
       setAddForm({ ...EMPTY_FORM });
       addToast(t('serverDetail.scheduleCreated'));
     } catch {
-      setAddError('Could not reach server');
+      setAddError(t('serverDetail.scheduleNetworkError'));
     } finally {
       setAddSaving(false);
     }
@@ -281,11 +298,11 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
   async function saveEditSchedule() {
     const { label, action, cron, command, timezone } = editForm;
     if (!label.trim() || !cron.trim()) {
-      setEditError('Label and cron expression are required');
+      setEditError(t('serverDetail.scheduleRequired'));
       return;
     }
     if (action === 'command' && !command.trim()) {
-      setEditError('Command is required for command action');
+      setEditError(t('serverDetail.scheduleCommandRequired'));
       return;
     }
     setEditSaving(true);
@@ -304,14 +321,14 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setEditError(data.error ?? 'Failed to update schedule');
+        setEditError(data.error ?? t('serverDetail.scheduleUpdateFailed'));
         return;
       }
       setSchedules((prev) => prev.map((s) => (s.id === editId ? data : s)));
       setEditId(null);
       addToast(t('serverDetail.scheduleUpdated'));
     } catch {
-      setEditError('Could not reach server');
+      setEditError(t('serverDetail.scheduleNetworkError'));
     } finally {
       setEditSaving(false);
     }
@@ -342,7 +359,6 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
   }
 
   async function toggleScheduleEnabled(schedule: ScheduleEntry) {
-    // eslint-disable-next-line no-empty
     try {
       const res = await fetch(`/api/schedules/${id}/${schedule.id}`, {
         method: 'PUT',
@@ -353,12 +369,15 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
       if (res.ok) {
         setSchedules((prev) => prev.map((s) => (s.id === schedule.id ? data : s)));
         addToast(t('serverDetail.scheduleUpdated'));
+      } else {
+        addToast(data.error ?? t('serverDetail.scheduleUpdateFailed'), 'error');
       }
-    } catch {}
+    } catch {
+      addToast(t('serverDetail.scheduleUpdateFailed'), 'error');
+    }
   }
 
   async function deleteSchedule(scheduleId: string) {
-    // eslint-disable-next-line no-empty
     try {
       const res = await fetch(`/api/schedules/${id}/${scheduleId}`, {
         method: 'DELETE',
@@ -367,15 +386,20 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
       if (res.ok) {
         setSchedules((prev) => prev.filter((s) => s.id !== scheduleId));
         addToast(t('serverDetail.scheduleDeleted'));
+      } else {
+        const data = await res.json().catch(() => ({}));
+        addToast(data.error ?? t('serverDetail.scheduleDeleteFailed'), 'error');
       }
-    } catch {}
+    } catch {
+      addToast(t('serverDetail.scheduleDeleteFailed'), 'error');
+    }
   }
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="flex items-center gap-3 px-6 py-3 h-14 border-b border-line bg-bg-1 flex-none">
         <span className="font-mono text-xs text-ink-3">
-          {schedules.length} schedule{schedules.length !== 1 ? 's' : ''}
+          {t('serverDetail.scheduleCount', { count: schedules.length })}
         </span>
         <div className="ml-auto">
           {!showAddForm && (
@@ -411,12 +435,11 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
                     form={editForm}
                     setForm={setEditForm}
                     onCronPick={(expr) => setEditForm((f) => ({ ...f, cron: expr }))}
-                    t={t}
                   />
                   {editError && <div className="font-mono text-xs text-red">{editError}</div>}
                   <div className="flex gap-2">
                     <Button size="sm" variant="primary" disabled={editSaving} onClick={saveEditSchedule}>
-                      {editSaving ? 'Saving…' : t('common.save')}
+                      {editSaving ? t('serverDetail.saving') : t('common.save')}
                     </Button>
                     <Button
                       size="sm"
@@ -454,11 +477,21 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     <span className="font-mono text-xs text-ink-2">{s.cron}</span>
                     <span className="font-mono text-xs text-ink-3">·</span>
-                    <span className="font-mono text-xs text-ink-3">{previewCron(s.cron)}</span>
+                    <span className="font-mono text-xs text-ink-3">
+                      {previewCron(s.cron, t, i18n.language)}
+                    </span>
                     {s.timezone && (
                       <>
                         <span className="font-mono text-xs text-ink-3">·</span>
                         <span className="font-mono text-xs text-ink-3">{s.timezone}</span>
+                      </>
+                    )}
+                    {s.enabled && s.nextRun && (
+                      <>
+                        <span className="font-mono text-xs text-ink-3">·</span>
+                        <span className="font-mono text-xs text-accent">
+                          {t('serverDetail.scheduleNextIn', { time: relativeFuture(s.nextRun) })}
+                        </span>
                       </>
                     )}
                     {s.lastRun && (
@@ -497,7 +530,7 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
                   >
                     {t('common.edit')}
                   </Button>
-                  <Button onClick={() => deleteSchedule(s.id)}>{t('common.delete')}</Button>
+                  <Button onClick={() => setConfirmDelete(s)}>{t('common.delete')}</Button>
                 </div>
               </div>
             );
@@ -511,12 +544,11 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
             form={addForm}
             setForm={setAddForm}
             onCronPick={(expr) => setAddForm((f) => ({ ...f, cron: expr }))}
-            t={t}
           />
           {addError && <div className="font-mono text-xs text-red">{addError}</div>}
           <div className="flex gap-2">
             <Button size="sm" variant="primary" disabled={addSaving} onClick={createSchedule}>
-              {addSaving ? 'Saving…' : t('common.save')}
+              {addSaving ? t('serverDetail.saving') : t('common.save')}
             </Button>
             <Button
               size="sm"
@@ -531,6 +563,19 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
             </Button>
           </div>
         </div>
+      )}
+
+      {confirmDelete && (
+        <ConfirmModal
+          title={t('serverDetail.scheduleDeleteTitle')}
+          message={t('serverDetail.scheduleDeleteMessage', { label: confirmDelete.label })}
+          confirmLabel={t('common.delete')}
+          onConfirm={() => {
+            deleteSchedule(confirmDelete.id);
+            setConfirmDelete(null);
+          }}
+          onCancel={() => setConfirmDelete(null)}
+        />
       )}
     </div>
   );

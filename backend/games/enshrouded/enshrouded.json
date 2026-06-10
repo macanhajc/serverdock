@@ -1,0 +1,63 @@
+{
+  "id": "enshrouded",
+  "name": "Enshrouded",
+  "description": "Survival crafting action server",
+  "imageSource": "public",
+  "image": "mornedhels/enshrouded-server:latest",
+  "dataMount": "/opt/enshrouded",
+  "query": {
+    "type": "a2s",
+    "port": 15637
+  },
+  "ports": [
+    {
+      "host": 15636,
+      "container": 15636,
+      "protocol": "udp"
+    },
+    {
+      "host": 15637,
+      "container": 15637,
+      "protocol": "udp"
+    }
+  ],
+  "environment": [
+    {
+      "key": "SERVER_NAME",
+      "value": "My Enshrouded Server",
+      "pinned": true
+    },
+    {
+      "key": "SERVER_SLOT_COUNT",
+      "value": "16",
+      "pinned": false
+    },
+    {
+      "key": "PUID",
+      "value": "4711",
+      "pinned": false
+    },
+    {
+      "key": "PGID",
+      "value": "4711",
+      "pinned": false
+    },
+    {
+      "key": "SERVER_ROLE_0_NAME",
+      "value": "Admins",
+      "pinned": false
+    },
+    {
+      "key": "SERVER_ROLE_0_PASSWORD",
+      "value": "123123",
+      "pinned": false
+    }
+  ],
+  "resources": {
+    "cpuLimit": 4,
+    "memoryLimit": 8192
+  },
+  "rcon": {
+    "enabled": false
+  }
+}

@@ -29,14 +29,19 @@ function fmtDate(iso: string): string {
 interface BackupTabProps {
   id: string;
   token: string | null;
+  isRunning: boolean;
 }
 
-export function BackupTab({ id, token }: BackupTabProps) {
+export function BackupTab({ id, token, isRunning }: BackupTabProps) {
   const { t } = useTranslation();
   const { addToast } = useToast();
 
   const [backups, setBackups] = useState<BackupEntry[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const [retention, setRetention] = useState(0);
+  const [retentionDraft, setRetentionDraft] = useState('0');
+  const [retentionSaving, setRetentionSaving] = useState(false);
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createLabel, setCreateLabel] = useState('');
@@ -51,10 +56,45 @@ export function BackupTab({ id, token }: BackupTabProps) {
     setLoading(true);
     fetch(`/api/backups/${id}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data: BackupEntry[]) => setBackups(data))
+      .then((data: { backups: BackupEntry[]; retention: number }) => {
+        setBackups(data.backups);
+        setRetention(data.retention);
+        setRetentionDraft(String(data.retention));
+      })
       .catch(() => setBackups([]))
       .finally(() => setLoading(false));
   }, [id, token]);
+
+  async function saveRetention() {
+    const keep = parseInt(retentionDraft, 10);
+    if (isNaN(keep) || keep < 0 || keep === retention) {
+      setRetentionDraft(String(retention));
+      return;
+    }
+    setRetentionSaving(true);
+    try {
+      const res = await fetch(`/api/backups/${id}/retention`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keep }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setRetention(data.retention);
+        setRetentionDraft(String(data.retention));
+        setBackups(data.backups);
+        addToast(t('serverDetail.backupRetentionSaved'));
+      } else {
+        setRetentionDraft(String(retention));
+        addToast(data.error ?? t('serverDetail.backupRetentionFailed'), 'error');
+      }
+    } catch {
+      setRetentionDraft(String(retention));
+      addToast(t('serverDetail.backupRetentionFailed'), 'error');
+    } finally {
+      setRetentionSaving(false);
+    }
+  }
 
   async function createBackup() {
     setCreating(true);
@@ -121,29 +161,76 @@ export function BackupTab({ id, token }: BackupTabProps) {
     }
   }
 
-  function downloadBackup(backup: BackupEntry) {
-    window.open(`/api/backups/${id}/${backup.id}/download?token=${token}`);
+  // fetch + blob keeps the JWT in a header instead of a download URL
+  async function downloadBackup(backup: BackupEntry) {
+    setActionId(backup.id);
+    try {
+      const res = await fetch(`/api/backups/${id}/${backup.id}/download`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        addToast(t('serverDetail.backupDownloadFailed'), 'error');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${id}-${backup.id}.tar.gz`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      addToast(t('serverDetail.backupDownloadFailed'), 'error');
+    } finally {
+      setActionId(null);
+    }
   }
+
+  const totalSize = backups.reduce((sum, b) => sum + (b.size ?? 0), 0);
 
   return (
     <div className="h-full overflow-y-auto">
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-3 h-14 border-b border-line bg-bg-1 flex-none">
         <span className="font-mono text-xs text-ink-3">
-          {backups.length} backup{backups.length !== 1 ? 's' : ''}
+          {t('serverDetail.backupCount', { count: backups.length })}
+          {backups.length > 0 && <> · {fmtBytes(totalSize)}</>}
         </span>
-        <div className="ml-auto">
-          {!showCreateForm && (
-            <Button size="sm" variant="primary" onClick={() => setShowCreateForm(true)}>
-              {t('serverDetail.backupCreate')}
-            </Button>
-          )}
+        <div
+          className="ml-auto flex items-center gap-2"
+          title={t('serverDetail.backupRetentionHint')}
+        >
+          <span className="font-mono text-xs text-ink-3">
+            {t('serverDetail.backupRetention')}
+          </span>
+          <input
+            type="number"
+            min={0}
+            max={1000}
+            value={retentionDraft}
+            disabled={retentionSaving}
+            onChange={(e) => setRetentionDraft(e.target.value)}
+            onBlur={saveRetention}
+            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+            className="w-16 bg-bg-2 border border-line-2 font-mono text-xs text-ink px-2 py-1 outline-none focus:border-accent disabled:opacity-40"
+            style={{ borderRadius: 0 }}
+          />
         </div>
+        {!showCreateForm && (
+          <Button size="sm" variant="primary" onClick={() => setShowCreateForm(true)}>
+            {t('serverDetail.backupCreate')}
+          </Button>
+        )}
       </div>
 
       {/* Create form */}
       {showCreateForm && (
         <div className="px-6 py-5 border-b border-line bg-bg-1 flex flex-col gap-3">
+          {isRunning && (
+            <div className="font-mono text-xs text-yellow">
+              {t('serverDetail.backupRunningWarning')}
+            </div>
+          )}
           <input
             type="text"
             value={createLabel}
@@ -211,7 +298,7 @@ export function BackupTab({ id, token }: BackupTabProps) {
                     onClick={() => setConfirmRestore(b)}
                     disabled={busy}
                   >
-                    {busy && actionId === b.id ? t('serverDetail.backupRestoring') : t('serverDetail.backupRestore')}
+                    {busy ? t('serverDetail.backupRestoring') : t('serverDetail.backupRestore')}
                   </Button>
                   <Button
                     size="sm"

@@ -97,11 +97,13 @@ export async function attachStatsStream(io, id) {
 
   stream.on('end', () => {
     logger.info({ gameId: id }, 'stats stream ended');
-    activeStatsStreams.delete(id);
+    // Only evict if this slot is still the active one — a replaced (leave→join)
+    // stream's late 'end' must not delete the slot of the stream that succeeded it.
+    if (activeStatsStreams.get(id) === slot) activeStatsStreams.delete(id);
   });
 
   stream.on('error', () => {
-    activeStatsStreams.delete(id);
+    if (activeStatsStreams.get(id) === slot) activeStatsStreams.delete(id);
   });
 }
 

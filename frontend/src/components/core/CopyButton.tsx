@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { copyText } from '../../utils/clipboard';
 
 interface CopyButtonProps {
   text: string;
@@ -12,10 +13,9 @@ export function CopyButton({ text, className }: CopyButtonProps) {
 
   function copy(e: React.MouseEvent) {
     e?.stopPropagation?.();
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
+    copyText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   }
 
   return (

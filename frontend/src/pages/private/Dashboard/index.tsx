@@ -6,7 +6,7 @@ import socket from '../../../socket';
 import { ConfirmModal } from '../../../components/core/ConfirmModal';
 import { PageHeader } from '../../../components/core/PageHeader';
 import { STABLE } from '../../../utils/serverStatus';
-import type { Server, ServerStats, HostDisk } from '../../../types';
+import type { Server, ServerStats, HostDisk, PullProgress } from '../../../types';
 import { GlobalStatsCard } from './components/GlobalStatsCard';
 import { OsInfoCard } from './components/OsInfoCard';
 import { MonitoringRowSkeleton } from './components/MonitoringRowSkeleton';
@@ -14,7 +14,7 @@ import { MonitoringRow } from './components/MonitoringRow';
 import { Button } from '../../../components';
 
 export const COLS =
-  'minmax(260px, 1fr) 100px 100px 100px 180px 110px 220px 180px minmax(185px, 1fr)';
+  'minmax(220px, 1fr) 120px 80px 100px 100px 180px 110px 220px 200px minmax(185px, 1fr)';
 
 interface DashboardMainProps {
   navigate: (path: string) => void;
@@ -26,7 +26,9 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
   const { addToast } = useToast();
   const [servers, setServers] = useState<Server[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [serverStats, setServerStats] = useState<Record<string, ServerStats>>({});
+  const [pullProgress, setPullProgress] = useState<Record<string, PullProgress>>({});
   const [loading, setLoading] = useState<Record<string, string>>({});
   const [confirmWipe, setConfirmWipe] = useState<{ id: string; name: string } | null>(null);
   const [hostTotalMem, setHostTotalMem] = useState<number | null>(null);
@@ -41,6 +43,20 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
     uptime: number;
   } | null>(null);
   const subscribedIds = useRef(new Set<string>());
+
+  function loadServers() {
+    fetch('/api/servers')
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data: Server[]) => {
+        setServers(data);
+        setLoadError(false);
+        setLoaded(true);
+      })
+      .catch(() => {
+        setLoadError(true);
+        setLoaded(true);
+      });
+  }
 
   async function callAction(id: string, action: 'start' | 'stop' | 'restart' | 'reset') {
     setLoading((prev) => ({ ...prev, [id]: action }));
@@ -71,7 +87,7 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
         }
       } else {
         const data = await res.json().catch(() => ({}));
-        addToast(data.error ?? `${action} failed`);
+        addToast(data.error ?? `${action} failed`, 'error');
         setLoading((prev) => {
           const n = { ...prev };
           delete n[id];
@@ -79,7 +95,7 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
         });
       }
     } catch {
-      addToast(`${action} failed — could not reach server`);
+      addToast(`${action} failed — could not reach server`, 'error');
       setLoading((prev) => {
         const n = { ...prev };
         delete n[id];
@@ -99,8 +115,21 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
       players: number | null;
     }) {
       setServers((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, status, players: players ?? s.players } : s))
+        prev.map((s) =>
+          s.id === id
+            ? // null players on a non-running server means "no players", not "unknown"
+              { ...s, status, players: status === 'running' ? (players ?? s.players) : players }
+            : s
+        )
       );
+      if (status !== 'pulling') {
+        setPullProgress((prev) => {
+          if (!(id in prev)) return prev;
+          const n = { ...prev };
+          delete n[id];
+          return n;
+        });
+      }
       if (STABLE.includes(status)) {
         setLoading((prev) => {
           const n = { ...prev };
@@ -109,6 +138,9 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
         });
       }
     }
+    function onPullProgress({ id, phase, percent }: PullProgress & { id: string }) {
+      setPullProgress((prev) => ({ ...prev, [id]: { phase, percent } }));
+    }
     function onStatusAll(
       snapshot: Array<{ id: string; status: Server['status']; players: number | null }>
     ) {
@@ -116,29 +148,20 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
         const map = new Map(snapshot.map((u) => [u.id, u]));
         return prev.map((s) => {
           const u = map.get(s.id);
-          return u ? { ...s, status: u.status, players: u.players ?? s.players } : s;
+          if (!u) return s;
+          const players = u.status === 'running' ? (u.players ?? s.players) : u.players;
+          return { ...s, status: u.status, players };
         });
       });
     }
 
-    function onCrashAlert({ name }: { name: string }) {
-      addToast(`${name} crashed unexpectedly`, 'error');
-    }
-
     socket.on('status:update', onStatusUpdate);
     socket.on('status:all', onStatusAll);
-    socket.on('crash:alert', onCrashAlert);
+    socket.on('pull:progress', onPullProgress);
+    // join:status refreshes the snapshot; room membership is kept by ServerEventsBridge
     socket.emit('join:status');
 
-    fetch('/api/servers')
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data: Server[]) => {
-        setServers(data);
-        setLoaded(true);
-      })
-      .catch(() => {
-        setLoaded(true);
-      });
+    loadServers();
 
     fetch('/api/health')
       .then((r) => (r.ok ? r.json() : Promise.reject()))
@@ -168,8 +191,7 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
     return () => {
       socket.off('status:update', onStatusUpdate);
       socket.off('status:all', onStatusAll);
-      socket.off('crash:alert', onCrashAlert);
-      socket.emit('leave:status');
+      socket.off('pull:progress', onPullProgress);
     };
   }, []);
 
@@ -210,9 +232,17 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
         [id]: { cpu, memUsed, memLimit, netInRate, netOutRate },
       }));
     }
+    // Server-side streams die with the connection — re-join after a reconnect
+    function rejoinStats() {
+      for (const id of subscribedIds.current) {
+        socket.emit('join:stats', { id });
+      }
+    }
     socket.on('stats:update', onStatsUpdate);
+    socket.on('connect', rejoinStats);
     return () => {
       socket.off('stats:update', onStatsUpdate);
+      socket.off('connect', rejoinStats);
       for (const id of subscribedIds.current) {
         socket.emit('leave:stats', { id });
       }
@@ -259,11 +289,13 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
         <div className="flex flex-row justify-between items-center border border-line bg-bg-1 px-5 py-4 mb-6">
           <div>
             <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
-              Servers
+              {t('adminDashboard.serversCardLabel')}
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-[26px] font-bold tabular-nums leading-none">{onlineCount}</span>
-              <span className="font-mono text-sm text-ink-3">/ {totalCount} online</span>
+              <span className="font-mono text-sm text-ink-3">
+                {t('adminDashboard.onlineOfTotal', { total: totalCount })}
+              </span>
             </div>
           </div>
 
@@ -273,23 +305,23 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
         </div>
 
         <div
-          className="border border-line bg-bg-1 overflow-x-auto overflow-y-auto"
-          style={{ maxHeight: 'calc(100vh - 260px)' }}
+          className="border border-line bg-bg-1 overflow-x-auto"
         >
           <div
-            className="grid border-b border-line-2 bg-bg-2 sticky top-0 z-10"
+            className="grid border-b border-line-2 bg-bg-2 sticky top-0 z-20"
             style={{ gridTemplateColumns: COLS, width: 'fit-content' }}
           >
             {[
-              'Server',
-              'Status',
-              'Players',
-              'CPU (%)',
-              'RAM',
-              'Disk',
-              'Network',
-              'Connect',
-              'Actions',
+              t('adminDashboard.colServer'),
+              t('adminDashboard.colStatus'),
+              t('adminDashboard.colUptime'),
+              t('adminDashboard.colPlayers'),
+              t('adminDashboard.colCpu'),
+              t('adminDashboard.colRam'),
+              t('adminDashboard.colDisk'),
+              t('adminDashboard.colNetwork'),
+              t('adminDashboard.colConnect'),
+              t('adminDashboard.colActions'),
             ].map((col, i) => (
               <div
                 key={col}
@@ -310,18 +342,28 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
                 key={server.id}
                 server={server}
                 stats={serverStats[server.id]}
+                pull={pullProgress[server.id]}
                 navigate={navigate}
                 actionLoading={loading[server.id]}
                 onStart={() => callAction(server.id, 'start')}
                 onStop={() => callAction(server.id, 'stop')}
                 onRestart={() => callAction(server.id, 'restart')}
                 onWipe={() => setConfirmWipe({ id: server.id, name: server.name })}
-                hostTotalMem={hostTotalMem}
-                hostCpuCount={hostCpuCount}
               />
             ))}
 
-          {loaded && servers.length === 0 && (
+          {loaded && loadError && servers.length === 0 && (
+            <div className="px-5 py-10 flex items-center gap-4">
+              <span className="font-mono text-xs" style={{ color: 'var(--red)' }}>
+                {t('adminDashboard.loadFailed')}
+              </span>
+              <Button size="sm" onClick={loadServers}>
+                {t('adminDashboard.retry')}
+              </Button>
+            </div>
+          )}
+
+          {loaded && !loadError && servers.length === 0 && (
             <div className="px-5 py-10 font-mono text-xs text-ink-3">
               {t('adminDashboard.noServers')}
             </div>

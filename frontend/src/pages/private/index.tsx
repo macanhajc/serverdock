@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { LangSwitcher, SidebarNav } from '../../components';
+import { ServerEventsBridge } from '../../components/core/ServerEventsBridge';
 import { DashboardMain } from './Dashboard';
 import ServerDetail from './ServerDetail';
 import GameForm from './GameForm';
@@ -58,6 +59,7 @@ export default function PrivateRoute() {
 
   return (
     <div className="flex min-h-screen bg-bg">
+      <ServerEventsBridge />
       <SidebarNav
         items={navItems}
         active={active}

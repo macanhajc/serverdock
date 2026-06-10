@@ -5,6 +5,7 @@ import { verifyToken } from '../middleware/auth.js';
 import { getGames, getGame, loadGames, GAMES_DIR, getDataPath } from '../lib/gameLoader.js';
 import { getContainerStatus } from '../lib/containers.js';
 import { getIo } from '../lib/socket.js';
+import { emitServerEvent } from '../lib/statusBus.js';
 import docker from '../lib/docker.js';
 
 const router = Router();
@@ -24,18 +25,6 @@ function validatePortRange(ports) {
   return null;
 }
 
-function checkPortConflict(game, excludeId = null) {
-  const incoming = new Set(game.ports.map((p) => `${p.host}/${p.protocol}`));
-  for (const existing of getGames()) {
-    if (existing.id === excludeId) continue;
-    for (const p of existing.ports) {
-      if (incoming.has(`${p.host}/${p.protocol}`)) {
-        return `Port ${p.host}/${p.protocol} is already used by "${existing.name}" — change the Host Port to a free one (the Container Port can stay the same)`;
-      }
-    }
-  }
-  return null;
-}
 
 async function updateImageBuilt(id, value) {
   const jsonPath = join(GAMES_DIR, id, `${id}.json`);
@@ -47,6 +36,19 @@ async function updateImageBuilt(id, value) {
 
 async function runBuild(id, imageName) {
   const io = getIo();
+  const name = getGame(id)?.name ?? id;
+
+  // Build outcomes also go to the status room so admins who navigated away
+  // from the build page still see the result.
+  const notifyFailed = (error) => {
+    io?.to(`build:${id}`).emit('build:failed', { id, success: false, error });
+    emitServerEvent({ type: 'build_failed', id, name, message: error });
+  };
+  const notifyComplete = () => {
+    io?.to(`build:${id}`).emit('build:complete', { id, success: true });
+    emitServerEvent({ type: 'build_complete', id, name });
+  };
+
   let buildStream;
   try {
     buildStream = await docker.buildImage(
@@ -54,7 +56,7 @@ async function runBuild(id, imageName) {
       { t: imageName }
     );
   } catch (err) {
-    io?.to(`build:${id}`).emit('build:failed', { id, success: false, error: err.message });
+    notifyFailed(err.message);
     return;
   }
 
@@ -63,10 +65,10 @@ async function runBuild(id, imageName) {
       buildStream,
       async (err) => {
         if (err) {
-          io?.to(`build:${id}`).emit('build:failed', { id, success: false, error: err.message });
+          notifyFailed(err.message);
           await updateImageBuilt(id, false).catch(() => {});
         } else {
-          io?.to(`build:${id}`).emit('build:complete', { id, success: true });
+          notifyComplete();
           await updateImageBuilt(id, true).catch(() => {});
         }
         resolve();
@@ -111,9 +113,6 @@ router.post('/', verifyToken, async (req, res) => {
   const portRangeErr = validatePortRange(game.ports);
   if (portRangeErr) return res.status(400).json({ error: portRangeErr });
 
-  const conflict = checkPortConflict(game);
-  if (conflict) return res.status(409).json({ error: conflict });
-
   const gameDir = join(GAMES_DIR, game.id);
   await mkdir(gameDir, { recursive: true });
   await mkdir(getDataPath(game.id), { recursive: true });
@@ -126,9 +125,21 @@ router.post('/', verifyToken, async (req, res) => {
 // PUT /api/games/:id
 router.put('/:id', verifyToken, async (req, res) => {
   const { id } = req.params;
-  if (!getGame(id)) return res.status(404).json({ error: 'Game not found' });
+  const existing = getGame(id);
+  if (!existing) return res.status(404).json({ error: 'Game not found' });
 
-  const game = { ...req.body, id };
+  // Preserve fields owned by other features (schedules, backup retention) —
+  // the config form doesn't send them and a full overwrite would wipe them.
+  const game = {
+    ...req.body,
+    id,
+    ...(req.body.schedules === undefined && existing.schedules !== undefined
+      ? { schedules: existing.schedules }
+      : {}),
+    ...(req.body.backupRetention === undefined && existing.backupRetention !== undefined
+      ? { backupRetention: existing.backupRetention }
+      : {}),
+  };
 
   const missing = REQUIRED_FIELDS.filter((f) => game[f] === undefined);
   if (missing.length)
@@ -136,9 +147,6 @@ router.put('/:id', verifyToken, async (req, res) => {
 
   const portRangeErr = validatePortRange(game.ports);
   if (portRangeErr) return res.status(400).json({ error: portRangeErr });
-
-  const conflict = checkPortConflict(game, id);
-  if (conflict) return res.status(409).json({ error: conflict });
 
   await writeFile(join(GAMES_DIR, id, `${id}.json`), JSON.stringify(game, null, 2));
   await loadGames();

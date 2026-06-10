@@ -1,0 +1,68 @@
+{
+  "id": "aska",
+  "name": "Aska",
+  "description": "",
+  "imageSource": "public",
+  "image": "struppinet/aska-dedicated-server:latest",
+  "dataMount": "/home/container/server_files",
+  "query": {
+    "type": "a2s",
+    "port": 27016
+  },
+  "ports": [
+    {
+      "host": 27015,
+      "container": 27015,
+      "protocol": "udp"
+    },
+    {
+      "host": 27016,
+      "container": 27016,
+      "protocol": "udp"
+    }
+  ],
+  "environment": [
+    {
+      "key": "AUTHENTICATION_TOKEN",
+      "value": "0A2726B5732127854E0B6764D30B22FF",
+      "pinned": true
+    },
+    {
+      "key": "SERVER_NAME",
+      "value": "Aska_docker",
+      "pinned": true
+    },
+    {
+      "key": "NO_VALIDATE",
+      "value": "false",
+      "pinned": false
+    },
+    {
+      "key": "SERVER_PORT",
+      "value": "27015",
+      "pinned": false
+    },
+    {
+      "key": "SERVER_QUERY_PORT",
+      "value": "27016",
+      "pinned": false
+    },
+    {
+      "key": "PASSWORD",
+      "value": "",
+      "pinned": false
+    },
+    {
+      "key": "REION",
+      "value": "europe",
+      "pinned": true
+    }
+  ],
+  "resources": {
+    "cpuLimit": null,
+    "memoryLimit": null
+  },
+  "rcon": {
+    "enabled": false
+  }
+}

@@ -15,6 +15,21 @@ export async function getDirSize(path) {
   }
 }
 
+// Cached variant for hot/public paths. GET /api/servers is unauthenticated and
+// polled by every visitor; walking each game's full data tree (du -sb) on every
+// request is expensive for multi-GB world saves. Cache per path with a short TTL
+// and share the in-flight promise so concurrent callers trigger a single walk.
+const DIR_SIZE_TTL = 60_000;
+const dirSizeCache = new Map(); // path -> { at, promise }
+
+export function getDirSizeCached(path) {
+  const hit = dirSizeCache.get(path);
+  if (hit && Date.now() - hit.at < DIR_SIZE_TTL) return hit.promise;
+  const promise = getDirSize(path);
+  dirSizeCache.set(path, { at: Date.now(), promise });
+  return promise;
+}
+
 // Returns { total, free, used } in bytes for the filesystem containing path.
 // Returns null on error.
 export async function getHostDiskInfo(path = '/') {

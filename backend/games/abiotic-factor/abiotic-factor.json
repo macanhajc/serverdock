@@ -1,0 +1,23 @@
+{
+  "id": "abiotic-factor",
+  "name": "Abiotic Factor",
+  "description": "Cooperative sci-fi survival server",
+  "imageSource": "public",
+  "image": "andrewsav/abiotic-factor:latest",
+  "dataMount": "/gamefiles",
+  "ports": [
+    { "host": 7777, "container": 7777, "protocol": "udp" },
+    { "host": 27015, "container": 27015, "protocol": "udp" }
+  ],
+  "environment": [
+    { "key": "SteamServerName", "value": "My Abiotic Factor Server", "pinned": true },
+    { "key": "ServerPassword", "value": "changeme", "pinned": true },
+    { "key": "MaxServerPlayers", "value": "6", "pinned": false },
+    { "key": "AutoUpdate", "value": "true", "pinned": false }
+  ],
+  "rcon": { "enabled": false },
+  "resources": {
+    "cpuLimit": 2,
+    "memoryLimit": 4096
+  }
+}

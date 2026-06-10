@@ -18,9 +18,20 @@ export async function loadVisitors() {
   }
 }
 
-async function persist() {
-  await writeFile(TMP_PATH, JSON.stringify(visitors, null, 2));
-  await rename(TMP_PATH, STORE_PATH);
+// Serialize writes. Concurrent identify requests would otherwise race on the
+// shared .tmp file: one rename moves it to visitors.json before the other's
+// rename runs, so the second fails with ENOENT. Chaining guarantees exactly one
+// writeFile→rename at a time. `run` is used for both fulfil and reject so a
+// failed write never stalls the queue; each caller still sees its own outcome.
+let writeChain = Promise.resolve();
+
+function persist() {
+  const run = async () => {
+    await writeFile(TMP_PATH, JSON.stringify(visitors, null, 2));
+    await rename(TMP_PATH, STORE_PATH);
+  };
+  writeChain = writeChain.then(run, run);
+  return writeChain;
 }
 
 export function getVisitors() {

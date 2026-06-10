@@ -39,7 +39,18 @@ async function sendPush(subscriptions, payload) {
   }
 }
 
-export async function sendCrashNotification(game) {
+function exitDetail(exitInfo) {
+  if (!exitInfo) return '';
+  if (exitInfo.oomKilled) return ' (killed: out of memory)';
+  if (exitInfo.error) return ` (${exitInfo.error})`;
+  if (exitInfo.exitCode != null && exitInfo.exitCode !== 0) {
+    return ` (exit code ${exitInfo.exitCode})`;
+  }
+  return '';
+}
+
+export async function sendCrashNotification(game, exitInfo = null) {
+  const detail = exitDetail(exitInfo);
   const { discordWebhookUrl, pushSubscriptions = [] } = getSettings();
 
   if (discordWebhookUrl?.trim()) {
@@ -47,7 +58,7 @@ export async function sendCrashNotification(game) {
       await postDiscord(discordWebhookUrl, [
         {
           title: 'Server Crashed',
-          description: `**${game.name}** stopped unexpectedly.`,
+          description: `**${game.name}** stopped unexpectedly${detail}.`,
           color: 0xe74c3c,
           timestamp: new Date().toISOString(),
           footer: { text: 'ServerDock' },
@@ -61,9 +72,34 @@ export async function sendCrashNotification(game) {
   if (pushSubscriptions.length) {
     await sendPush(pushSubscriptions, {
       title: 'Server Crashed',
-      body: `${game.name} stopped unexpectedly.`,
+      body: `${game.name} stopped unexpectedly${detail}.`,
       gameId: game.id,
     });
+  }
+}
+
+// Generic out-of-band alert (scheduled action failures, etc.) — same channels as crashes
+export async function sendEventNotification(title, body, gameId = null) {
+  const { discordWebhookUrl, pushSubscriptions = [] } = getSettings();
+
+  if (discordWebhookUrl?.trim()) {
+    try {
+      await postDiscord(discordWebhookUrl, [
+        {
+          title,
+          description: body,
+          color: 0xe74c3c,
+          timestamp: new Date().toISOString(),
+          footer: { text: 'ServerDock' },
+        },
+      ]);
+    } catch (err) {
+      logger.warn({ err, gameId }, 'discord event notification failed');
+    }
+  }
+
+  if (pushSubscriptions.length) {
+    await sendPush(pushSubscriptions, { title, body, gameId });
   }
 }
 

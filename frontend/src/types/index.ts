@@ -4,11 +4,24 @@ export type ContainerStatus =
   | 'stopped'
   | 'error'
   | 'starting'
+  | 'stopping'
   | 'restarting'
   | 'pulling'
   | 'building';
 
-export type UiStatus = 'online' | 'offline' | 'error' | 'starting' | 'building';
+export type UiStatus =
+  | 'online'
+  | 'offline'
+  | 'error'
+  | 'starting'
+  | 'stopping'
+  | 'pulling'
+  | 'building';
+
+export interface PullProgress {
+  phase: 'downloading' | 'extracting' | string;
+  percent: number;
+}
 
 export type Protocol = 'tcp' | 'udp' | string;
 
@@ -105,6 +118,7 @@ export interface FileEntry {
   name: string;
   type: 'file' | 'directory';
   size?: number;
+  modified?: string | null;
 }
 
 export interface OpenFile {
@@ -131,6 +145,7 @@ export interface ScheduleEntry {
   enabled: boolean;
   lastRun?: { at: string; ok: boolean };
   lastStatus?: string;
+  nextRun?: string | null;
 }
 
 export interface ScheduleFormState {

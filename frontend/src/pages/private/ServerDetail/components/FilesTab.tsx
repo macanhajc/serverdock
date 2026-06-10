@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '../../../../context/ToastContext';
 import { Button } from '../../../../components/core/Button';
+import { ConfirmModal } from '../../../../components/core/ConfirmModal';
 import { formatSize } from '../../../../utils/format';
 import type { FileEntry, OpenFile } from '../../../../types';
 
@@ -12,13 +13,25 @@ interface FileItemProps {
   name: string;
   type: 'file' | 'directory';
   size?: number;
+  modified?: string | null;
   active?: boolean;
   onClick: () => void;
   onRename?: (name: string) => void;
   onRemove?: () => void;
+  onDownload?: () => void;
 }
 
-function FileItem({ name, type, size, active, onClick, onRename, onRemove }: FileItemProps) {
+function FileItem({
+  name,
+  type,
+  size,
+  modified,
+  active,
+  onClick,
+  onRename,
+  onRemove,
+  onDownload,
+}: FileItemProps) {
   const { t } = useTranslation();
   const isDir = type === 'directory';
   const hasMenu = !!onRename && !!onRemove;
@@ -69,6 +82,7 @@ function FileItem({ name, type, size, active, onClick, onRename, onRemove }: Fil
     <>
       <div
         onClick={renaming ? undefined : onClick}
+        title={modified ? new Date(modified).toLocaleString() : undefined}
         className={`group flex items-center gap-2.5 px-2.5 py-2 font-mono text-[12.5px] border ${
           renaming ? 'cursor-default' : 'cursor-pointer'
         } ${
@@ -125,6 +139,17 @@ function FileItem({ name, type, size, active, onClick, onRename, onRemove }: Fil
             >
               {t('serverDetail.rename')}
             </button>
+            {onDownload && (
+              <button
+                className="w-full text-left px-3 py-2 font-mono text-xs text-ink-2 hover:bg-bg-3 hover:text-ink cursor-pointer"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onDownload();
+                }}
+              >
+                {t('serverDetail.filesDownload')}
+              </button>
+            )}
             <button
               className="w-full text-left px-3 py-2 font-mono text-xs text-red hover:bg-bg-3 cursor-pointer"
               onClick={() => {
@@ -154,6 +179,7 @@ export function FilesTab({ id, token }: FilesTabProps) {
 
   const [currentPath, setCurrentPath] = useState('/');
   const [entries, setEntries] = useState<FileEntry[]>([]);
+  const [listError, setListError] = useState(false);
   const [dirVersion, setDirVersion] = useState(0);
   const [openFile, setOpenFile] = useState<OpenFile | null>(null);
   const [fileContent, setFileContent] = useState('');
@@ -162,6 +188,10 @@ export function FilesTab({ id, token }: FilesTabProps) {
   const [fileError, setFileError] = useState('');
   const [dragCount, setDragCount] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState<FileEntry | null>(null);
+  const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
+  const [creating, setCreating] = useState<'file' | 'directory' | null>(null);
+  const [createName, setCreateName] = useState('');
   const gutterRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
@@ -170,8 +200,14 @@ export function FilesTab({ id, token }: FilesTabProps) {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data: { entries: FileEntry[] }) => setEntries(data.entries))
-      .catch(() => setEntries([]));
+      .then((data: { entries: FileEntry[] }) => {
+        setEntries(data.entries);
+        setListError(false);
+      })
+      .catch(() => {
+        setEntries([]);
+        setListError(true);
+      });
   }, [id, currentPath, token, dirVersion]);
 
   useEffect(() => {
@@ -195,8 +231,20 @@ export function FilesTab({ id, token }: FilesTabProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openFile?.path, id, token]);
 
+  const fileLines = fileContent ? fileContent.split('\n') : [''];
+  const fileDirty = fileContent !== savedContent;
+
+  // Route navigation through here — unsaved editor changes need an explicit discard
+  function guardNav(go: () => void) {
+    if (openFile && fileDirty) {
+      setPendingNav(() => go);
+    } else {
+      go();
+    }
+  }
+
   async function saveFile() {
-    if (!openFile) return;
+    if (!openFile || fileSaving) return;
     setFileSaving(true);
     setFileError('');
     try {
@@ -216,6 +264,13 @@ export function FilesTab({ id, token }: FilesTabProps) {
       setFileError('Save failed');
     } finally {
       setFileSaving(false);
+    }
+  }
+
+  function onEditorKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      if (fileDirty) saveFile();
     }
   }
 
@@ -270,24 +325,31 @@ export function FilesTab({ id, token }: FilesTabProps) {
   const pathSegments = currentPath.split('/').filter(Boolean);
 
   function navigateToSegment(idx: number) {
-    setCurrentPath(idx < 0 ? '/' : '/' + pathSegments.slice(0, idx + 1).join('/'));
-    setOpenFile(null);
+    guardNav(() => {
+      setCurrentPath(idx < 0 ? '/' : '/' + pathSegments.slice(0, idx + 1).join('/'));
+      setOpenFile(null);
+    });
   }
 
   function navigateUp() {
-    const parts = currentPath.split('/').filter(Boolean);
-    parts.pop();
-    setCurrentPath(parts.length ? '/' + parts.join('/') : '/');
-    setOpenFile(null);
+    guardNav(() => {
+      const parts = currentPath.split('/').filter(Boolean);
+      parts.pop();
+      setCurrentPath(parts.length ? '/' + parts.join('/') : '/');
+      setOpenFile(null);
+    });
   }
 
   function handleEntryClick(entry: FileEntry) {
+    const p = entryPath(entry.name);
     if (entry.type === 'directory') {
-      setCurrentPath(currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`);
-      setOpenFile(null);
+      guardNav(() => {
+        setCurrentPath(p);
+        setOpenFile(null);
+      });
     } else {
-      const p = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`;
-      setOpenFile({ path: p, name: entry.name });
+      if (openFile?.path === p) return;
+      guardNav(() => setOpenFile({ path: p, name: entry.name }));
     }
   }
 
@@ -335,8 +397,74 @@ export function FilesTab({ id, token }: FilesTabProps) {
     }
   }
 
-  const fileLines = fileContent ? fileContent.split('\n') : [''];
-  const fileDirty = fileContent !== savedContent;
+  async function downloadEntry(entry: FileEntry) {
+    const path = entryPath(entry.name);
+    try {
+      const res = await fetch(`/api/files/${id}/download?path=${encodeURIComponent(path)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        addToast(t('serverDetail.filesDownloadFailed'));
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = entry.name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      addToast(t('serverDetail.filesDownloadFailed'));
+    }
+  }
+
+  async function commitCreate() {
+    const name = createName.trim();
+    const kind = creating;
+    setCreating(null);
+    setCreateName('');
+    if (!name || !kind) return;
+    if (name.includes('/') || name.includes('\\')) {
+      addToast(t('serverDetail.filesCreateFailed'));
+      return;
+    }
+    const path = entryPath(name);
+    try {
+      const res =
+        kind === 'directory'
+          ? await fetch(`/api/files/${id}/mkdir`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path }),
+            })
+          : await fetch(`/api/files/${id}/write`, {
+              method: 'PUT',
+              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path, content: '' }),
+            });
+      if (res.ok) {
+        setDirVersion((v) => v + 1);
+        if (kind === 'file') setOpenFile({ path, name });
+      } else {
+        const data = await res.json().catch(() => ({}));
+        addToast(data.error ?? t('serverDetail.filesCreateFailed'));
+      }
+    } catch {
+      addToast(t('serverDetail.filesCreateFailed'));
+    }
+  }
+
+  function onCreateKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitCreate();
+    }
+    if (e.key === 'Escape') {
+      setCreating(null);
+      setCreateName('');
+    }
+  }
 
   return (
     <div className="h-full grid grid-cols-[320px_1fr] overflow-hidden">
@@ -386,29 +514,90 @@ export function FilesTab({ id, token }: FilesTabProps) {
               )}
             </Fragment>
           ))}
+          <span className="ml-auto flex gap-2 flex-none">
+            <button
+              className="text-ink-3 hover:text-ink cursor-pointer"
+              title={t('serverDetail.filesNewFile')}
+              onClick={() => {
+                setCreating('file');
+                setCreateName('');
+              }}
+            >
+              +{t('serverDetail.filesNewFile')}
+            </button>
+            <button
+              className="text-ink-3 hover:text-ink cursor-pointer"
+              title={t('serverDetail.filesNewFolder')}
+              onClick={() => {
+                setCreating('directory');
+                setCreateName('');
+              }}
+            >
+              +{t('serverDetail.filesNewFolder')}
+            </button>
+          </span>
         </div>
 
         <div className="flex-1 overflow-y-auto p-2">
+          {creating && (
+            <div className="flex items-center gap-2.5 px-2.5 py-2 font-mono text-[12.5px] border border-line bg-bg-2">
+              <span
+                className={`w-3 h-3 flex-none ${
+                  creating === 'directory'
+                    ? 'bg-[#caa45a] opacity-80'
+                    : 'bg-[#3a3a3a] border border-[#4a4a4a]'
+                }`}
+              />
+              <input
+                autoFocus
+                value={createName}
+                onChange={(e) => setCreateName(e.target.value)}
+                onKeyDown={onCreateKeyDown}
+                onBlur={commitCreate}
+                placeholder={
+                  creating === 'directory'
+                    ? t('serverDetail.filesNewFolder')
+                    : t('serverDetail.filesNewFile')
+                }
+                className="flex-1 min-w-0 bg-transparent border-b font-mono text-[12.5px] text-ink outline-none placeholder:text-ink-3"
+                style={{ borderColor: 'var(--accent-edge)' }}
+              />
+            </div>
+          )}
           {currentPath !== '/' && <FileItem name=".." type="directory" onClick={navigateUp} />}
           {entries.map((entry) => {
-            const ep = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`;
+            const ep = entryPath(entry.name);
             return (
               <FileItem
                 key={entry.name}
                 name={entry.name}
                 type={entry.type}
                 size={entry.size}
+                modified={entry.modified}
                 active={openFile?.path === ep}
                 onClick={() => handleEntryClick(entry)}
                 onRename={(newName) => renameEntry(entry, newName)}
-                onRemove={() => removeEntry(entry)}
+                onRemove={() => setConfirmRemove(entry)}
+                onDownload={entry.type === 'file' ? () => downloadEntry(entry) : undefined}
               />
             );
           })}
-          {entries.length === 0 && (
-            <span className="font-mono text-sm text-ink-3 px-3 py-2 block">
-              {currentPath === '/' ? t('serverDetail.noFiles') : t('serverDetail.emptyFolder')}
-            </span>
+          {listError ? (
+            <div className="px-3 py-2 flex flex-col items-start gap-2">
+              <span className="font-mono text-sm text-red">
+                {t('serverDetail.filesLoadFailed')}
+              </span>
+              <Button size="sm" variant="ghost" onClick={() => setDirVersion((v) => v + 1)}>
+                {t('common.retry')}
+              </Button>
+            </div>
+          ) : (
+            entries.length === 0 &&
+            !creating && (
+              <span className="font-mono text-sm text-ink-3 px-3 py-2 block">
+                {currentPath === '/' ? t('serverDetail.noFiles') : t('serverDetail.emptyFolder')}
+              </span>
+            )
           )}
         </div>
       </div>
@@ -479,11 +668,42 @@ export function FilesTab({ id, token }: FilesTabProps) {
               value={fileContent}
               onChange={(e) => setFileContent(e.target.value)}
               onScroll={syncScroll}
+              onKeyDown={onEditorKeyDown}
               spellCheck={false}
               className="flex-1 py-4 px-4 font-mono text-[12.5px] leading-[1.7] text-[#c8c8c8] bg-[#0c0c0c] resize-none outline-none border-0 min-h-0"
             />
           </div>
         </div>
+      )}
+
+      {confirmRemove && (
+        <ConfirmModal
+          title={t('serverDetail.filesDeleteTitle', { name: confirmRemove.name })}
+          message={
+            confirmRemove.type === 'directory'
+              ? t('serverDetail.filesDeleteFolderMessage')
+              : t('serverDetail.filesDeleteFileMessage')
+          }
+          confirmLabel={t('common.delete')}
+          onConfirm={() => {
+            removeEntry(confirmRemove);
+            setConfirmRemove(null);
+          }}
+          onCancel={() => setConfirmRemove(null)}
+        />
+      )}
+
+      {pendingNav && (
+        <ConfirmModal
+          title={t('serverDetail.filesDiscardTitle')}
+          message={t('serverDetail.filesDiscardMessage', { name: openFile?.name ?? '' })}
+          confirmLabel={t('serverDetail.filesDiscardBtn')}
+          onConfirm={() => {
+            pendingNav();
+            setPendingNav(null);
+          }}
+          onCancel={() => setPendingNav(null)}
+        />
       )}
     </div>
   );

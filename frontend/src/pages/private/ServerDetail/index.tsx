@@ -9,11 +9,10 @@ import { Tabs } from '../../../components/navigation/Tabs';
 import { StatusBadge } from '../../../components/core/StatusBadge';
 import { Button } from '../../../components/core/Button';
 import { ConfirmModal } from '../../../components/core/ConfirmModal';
-import { STABLE, toUiStatus } from '../../../utils/serverStatus';
+import { STABLE, IN_FLIGHT, toUiStatus } from '../../../utils/serverStatus';
 import { fmtBytes } from '../../../utils/format';
-import type { Server, ServerStats, LogLine } from '../../../types';
+import type { Server, ServerStats, LogLine, PullProgress } from '../../../types';
 import { InfoTab } from './components/InfoTab';
-import { LogsTab } from './components/LogsTab';
 import { ConsoleTab } from './components/ConsoleTab';
 import { FilesTab } from './components/FilesTab';
 import { ScheduleTab } from './components/ScheduleTab';
@@ -24,6 +23,20 @@ const stripAnsi = (s: string) => s.replace(/\x1B\[[0-9;]*[mGKHF]/g, '');
 
 function nowTs(): string {
   return new Date().toTimeString().slice(0, 8);
+}
+
+function fmtTs(iso?: string): string {
+  if (!iso) return nowTs();
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? nowTs() : d.toTimeString().slice(0, 8);
+}
+
+// Cap kept log lines so a chatty server left open doesn't grow memory/renders forever
+const MAX_LOG_LINES = 2000;
+
+function appendCapped(prev: LogLine[], items: LogLine[]): LogLine[] {
+  const next = prev.concat(items);
+  return next.length > MAX_LOG_LINES ? next.slice(next.length - MAX_LOG_LINES) : next;
 }
 
 // ─── Sparkline ────────────────────────────────────────────────────────────────
@@ -68,17 +81,24 @@ export default function ServerDetail() {
   const navigate = useNavigate();
 
   const [server, setServer] = useState<Server | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [actionLoading, setAL] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [pull, setPull] = useState<PullProgress | null>(null);
   const prevStatus = useRef<string>('running');
 
   const [tab, setTab] = useState('info');
 
+  // Container output lives here (not in the tab) so it keeps accumulating while
+  // other tabs are open and survives switching between tabs.
   const [lines, setLines] = useState<LogLine[]>([]);
-  const [levelFilter, setLevelFilter] = useState('ALL');
-  const [autoscroll, setAutoscroll] = useState(true);
-  const termRef = useRef<HTMLDivElement>(null);
+  // Newest docker timestamp seen — lets log:history replays skip lines we already have
+  const lastLogIso = useRef<string>('');
+  // Keep `t` out of the log effect's deps (react-i18next can change its identity,
+  // which would needlessly re-join the room) while still reading the current value
+  const tRef = useRef(t);
+  tRef.current = t;
 
   const [stats, setStats] = useState<ServerStats | null>(null);
   const [cpuHistory, setCpuHistory] = useState<number[]>([]);
@@ -86,6 +106,7 @@ export default function ServerDetail() {
 
   // ── load server ───────────────────────────────────────────────────────────
   useEffect(() => {
+    setLoadError(false);
     fetch(`/api/servers/${id}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
@@ -94,7 +115,7 @@ export default function ServerDetail() {
         setServer(data);
         prevStatus.current = data.status;
       })
-      .catch(() => {});
+      .catch(() => setLoadError(true));
   }, [id, token]);
 
   // ── socket: status + logs ─────────────────────────────────────────────────
@@ -111,7 +132,12 @@ export default function ServerDetail() {
       if (sid !== id) return;
       const was = prevStatus.current;
       prevStatus.current = status;
-      setServer((prev) => (prev ? { ...prev, status, players: players ?? prev.players } : prev));
+      setServer((prev) =>
+        prev
+          ? { ...prev, status, players: status === 'running' ? (players ?? prev.players) : players }
+          : prev
+      );
+      if (status !== 'pulling') setPull(null);
       if (STABLE.includes(status)) setAL(null);
       if (status === 'running' && was !== 'running') {
         socket.emit('leave:logs', { id });
@@ -129,47 +155,86 @@ export default function ServerDetail() {
       id: lid,
       line,
       level,
+      ts,
     }: {
       id: string;
       line: string;
       level?: string;
+      ts?: string;
     }) {
       if (lid !== id) return;
-      setLines((prev) => [
-        ...prev,
-        { ts: nowTs(), level: (level ?? 'info').toUpperCase(), line: stripAnsi(line) },
-      ]);
+      if (ts && ts > lastLogIso.current) lastLogIso.current = ts;
+      setLines((prev) =>
+        appendCapped(prev, [
+          { ts: fmtTs(ts), level: (level ?? 'info').toUpperCase(), line: stripAnsi(line) },
+        ])
+      );
+    }
+    function onLogHistory({
+      id: lid,
+      lines: history,
+    }: {
+      id: string;
+      lines: Array<{ ts: string; line: string; level?: string }>;
+    }) {
+      if (lid !== id) return;
+      // Only lines newer than what we've already shown (re-joins replay the full buffer)
+      const fresh = history.filter((l) => l.ts > lastLogIso.current);
+      if (!fresh.length) return;
+      lastLogIso.current = fresh[fresh.length - 1].ts;
+      setLines((prev) =>
+        appendCapped(
+          prev,
+          fresh.map((l) => ({
+            ts: fmtTs(l.ts),
+            level: (l.level ?? 'info').toUpperCase(),
+            line: stripAnsi(l.line),
+          }))
+        )
+      );
     }
     function onLogEnd({ id: lid }: { id: string }) {
       if (lid !== id) return;
-      setLines((prev) => [
-        ...prev,
-        { ts: nowTs(), level: 'DEBUG', line: t('serverDetail.containerStopped') },
-      ]);
+      setLines((prev) =>
+        appendCapped(prev, [
+          { ts: nowTs(), level: 'DEBUG', line: tRef.current('serverDetail.containerStopped') },
+        ])
+      );
       setAL(null);
     }
 
-    function onCrashAlert({ id: cid, name }: { id: string; name: string }) {
-      if (cid !== id) return;
-      addToast(`${name} crashed unexpectedly`, 'error');
+    function onPullProgress({ id: pid, phase, percent }: PullProgress & { id: string }) {
+      if (pid !== id) return;
+      setPull({ phase, percent });
+    }
+
+    // Server-side streams die with the connection — re-join after a reconnect
+    function onReconnect() {
+      socket.emit('join:logs', { id });
+      socket.emit('join:status');
     }
 
     socket.on('status:update', onStatusUpdate);
     socket.on('log:line', onLogLine);
+    socket.on('log:history', onLogHistory);
     socket.on('log:end', onLogEnd);
-    socket.on('crash:alert', onCrashAlert);
+    socket.on('pull:progress', onPullProgress);
+    socket.on('connect', onReconnect);
     socket.emit('join:logs', { id });
+    // join:status refreshes the snapshot; room membership is kept by ServerEventsBridge
     socket.emit('join:status');
 
     return () => {
       socket.off('status:update', onStatusUpdate);
       socket.off('log:line', onLogLine);
+      socket.off('log:history', onLogHistory);
       socket.off('log:end', onLogEnd);
-      socket.off('crash:alert', onCrashAlert);
+      socket.off('pull:progress', onPullProgress);
+      socket.off('connect', onReconnect);
       socket.emit('leave:logs', { id });
-      socket.emit('leave:status');
     };
-  }, [id, t, addToast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   // ── socket: stats ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -189,21 +254,20 @@ export default function ServerDetail() {
       });
     }
 
+    function onReconnect() {
+      socket.emit('join:stats', { id });
+    }
+
     socket.on('stats:update', onStatsUpdate);
+    socket.on('connect', onReconnect);
     socket.emit('join:stats', { id });
 
     return () => {
       socket.off('stats:update', onStatsUpdate);
+      socket.off('connect', onReconnect);
       socket.emit('leave:stats', { id });
     };
   }, [id]);
-
-  // ── autoscroll logs ───────────────────────────────────────────────────────
-  useEffect(() => {
-    if (autoscroll && termRef.current) {
-      termRef.current.scrollTop = termRef.current.scrollHeight;
-    }
-  }, [lines, autoscroll]);
 
   // ── actions ───────────────────────────────────────────────────────────────
   async function callAction(action: 'start' | 'stop' | 'restart' | 'reset') {
@@ -237,6 +301,17 @@ export default function ServerDetail() {
 
   // ── render ────────────────────────────────────────────────────────────────
 
+  if (loadError) {
+    return (
+      <div className="p-6 flex flex-col items-start gap-4">
+        <p className="m-0 font-mono text-sm text-red">{t('serverDetail.loadFailed')}</p>
+        <Button size="sm" onClick={() => navigate('/admin')}>
+          {t('serverDetail.back')}
+        </Button>
+      </div>
+    );
+  }
+
   if (!server) {
     return <div className="p-6 font-mono text-xs text-ink-3">{t('common.loading')}</div>;
   }
@@ -244,7 +319,13 @@ export default function ServerDetail() {
   const { name, status, connection, image, rcon } = server;
   const isNotCreated = status === 'stopped' || status === 'not_created' || status === 'error';
   const isRunning = status === 'running';
-  const busy = !!actionLoading;
+  // Busy if this client has a request in flight, or any client/scheduler does
+  const busy = !!actionLoading || IN_FLIGHT.includes(status);
+
+  const badgeLabel =
+    status === 'pulling' && pull
+      ? `${t(pull.phase === 'extracting' ? 'status.extracting' : 'status.pulling')} ${pull.percent}%`
+      : undefined;
 
   return (
     <div className="flex container flex-col h-screen">
@@ -262,7 +343,9 @@ export default function ServerDetail() {
             {id} · {connection?.host}:{connection?.port} · {image}
           </div>
         </div>
-        <StatusBadge status={toUiStatus(status)} className="shrink-0" />
+        <StatusBadge status={toUiStatus(status)} className="shrink-0">
+          {badgeLabel}
+        </StatusBadge>
         <div className="ml-auto flex gap-1.5 flex-none">
           <Button
             size="sm"
@@ -285,6 +368,9 @@ export default function ServerDetail() {
           </Button>
           <Button size="sm" disabled={busy} onClick={() => setConfirmReset(true)}>
             {t('serverDetail.actReset')}
+          </Button>
+          <Button size="sm" onClick={() => navigate(`/admin/servers/${id}/edit`)}>
+            {t('serverDetail.editConfig')}
           </Button>
         </div>
       </div>
@@ -314,7 +400,7 @@ export default function ServerDetail() {
             onClick={() => setStatsOpen((v) => !v)}
           >
             <span className="font-mono text-xs text-ink-3 flex-none">
-              Resources {statsOpen ? '▾' : '▸'}
+              {t('serverDetail.resources')} {statsOpen ? '▾' : '▸'}
             </span>
             {!statsOpen && (
               <>
@@ -329,11 +415,11 @@ export default function ServerDetail() {
                   </span>
                 </span>
                 <span className="font-mono text-xs text-ink-3">
-                  Net ↓ <span className="text-ink">{fmtBytes(stats.netInRate)}/s</span> ↑{' '}
+                  {t('serverDetail.resNet')} ↓ <span className="text-ink">{fmtBytes(stats.netInRate)}/s</span> ↑{' '}
                   <span className="text-ink">{fmtBytes(stats.netOutRate)}/s</span>
                 </span>
                 <span className="font-mono text-xs text-ink-3">
-                  Disk <span className="text-ink">{fmtBytes(server.diskUsed ?? 0)}</span>
+                  {t('serverDetail.resDisk')} <span className="text-ink">{fmtBytes(server.diskUsed ?? 0)}</span>
                 </span>
               </>
             )}
@@ -384,7 +470,7 @@ export default function ServerDetail() {
               </div>
 
               <div className="flex items-center gap-3">
-                <span className="font-mono text-xs text-ink-3 w-10 shrink-0">Net</span>
+                <span className="font-mono text-xs text-ink-3 w-10 shrink-0">{t('serverDetail.resNet')}</span>
                 <span className="font-mono text-xs text-ink-3">
                   ↓ <span className="text-ink">{fmtBytes(stats.netInRate)}/s</span>
                 </span>
@@ -394,7 +480,7 @@ export default function ServerDetail() {
               </div>
 
               <div className="flex flex-row gap-3">
-                <span className="font-mono text-xs text-ink-3 w-10 shrink-0">Disk</span>
+                <span className="font-mono text-xs text-ink-3 w-10 shrink-0">{t('serverDetail.resDisk')}</span>
                 <span className="font-mono text-xs text-ink shrink-0">
                   {fmtBytes(server.diskUsed ?? 0)}
                 </span>
@@ -408,7 +494,6 @@ export default function ServerDetail() {
       <Tabs
         tabs={[
           { label: t('serverDetail.tabInfo'), value: 'info' },
-          { label: t('serverDetail.tabLogs'), value: 'logs' },
           { label: t('serverDetail.tabConsole'), value: 'console' },
           { label: t('serverDetail.tabFiles'), value: 'files' },
           { label: t('serverDetail.tabSchedule'), value: 'schedule' },
@@ -421,25 +506,23 @@ export default function ServerDetail() {
 
       {/* ── Tab content ───────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-hidden">
-        {tab === 'info' && <InfoTab server={server} id={id!} stats={stats} cpuHistory={cpuHistory} />}
-        {tab === 'logs' && (
-          <LogsTab
+        {tab === 'info' && <InfoTab server={server} id={id!} />}
+        {/* Console stays mounted so its filter/command/RCON state survives tab
+            switches; the output itself lives in `lines` on the parent */}
+        <div className={tab === 'console' ? 'h-full' : 'hidden'}>
+          <ConsoleTab
             id={id!}
+            token={token}
+            isRunning={isRunning}
+            rcon={rcon}
+            visible={tab === 'console'}
             lines={lines}
             setLines={setLines}
-            levelFilter={levelFilter}
-            setLevelFilter={setLevelFilter}
-            autoscroll={autoscroll}
-            setAutoscroll={setAutoscroll}
-            termRef={termRef}
           />
-        )}
-        {tab === 'console' && (
-          <ConsoleTab id={id!} token={token} isRunning={isRunning} rcon={rcon} />
-        )}
+        </div>
         {tab === 'files' && <FilesTab id={id!} token={token} />}
         {tab === 'schedule' && <ScheduleTab id={id!} token={token} />}
-        {tab === 'backups' && <BackupTab id={id!} token={token} />}
+        {tab === 'backups' && <BackupTab id={id!} token={token} isRunning={isRunning} />}
       </div>
 
       {confirmReset && (

@@ -2,18 +2,20 @@ import { PassThrough } from 'stream';
 import jwt from 'jsonwebtoken';
 import docker from './docker.js';
 import { getGames } from './gameLoader.js';
-import { getContainerStatus } from './containers.js';
+import { getEffectiveStatus, getContainerExitInfo, sendStdinCommand } from './containers.js';
 import { queryA2S, getPlayers, setPlayers } from './playerQuery.js';
 import { attachStatsStream, detachStatsStream } from './statsStreams.js';
 import { sendCrashNotification } from './notifier.js';
+import {
+  getTransient,
+  getLastKnown,
+  emitStatus,
+  emitCrashAlert,
+  emitDockerStatus,
+  consumeAdminStop,
+  clearAdminStop,
+} from './statusBus.js';
 import logger from './logger.js';
-
-// IDs of containers stopped by admin action — excluded from crash detection
-const adminStops = new Set();
-export function markAdminStop(id) { adminStops.add(id); }
-
-// eslint-disable-next-line no-control-regex
-const stripAnsi = (s) => s.replace(/\x1B\[[0-9;]*[mGKHF]/g, '');
 
 // --- Log level detection ---
 
@@ -23,94 +25,43 @@ function detectLevel(line) {
   return 'info';
 }
 
+// --- Log history ring buffer ---
+// Map<gameId, Array<{ ts, line, level }>> — replayed to sockets joining logs:<id>
+// so late viewers see context instead of a blank pane.
+
+const LOG_BUFFER_MAX = 300;
+const logBuffers = new Map();
+
+function pushLogBuffer(id, entry) {
+  let buf = logBuffers.get(id);
+  if (!buf) {
+    buf = [];
+    logBuffers.set(id, buf);
+  }
+  buf.push(entry);
+  if (buf.length > LOG_BUFFER_MAX) buf.splice(0, buf.length - LOG_BUFFER_MAX);
+}
+
+// Docker `timestamps: true` prefixes every line with an RFC3339Nano timestamp
+const TS_PREFIX = /^(\d{4}-\d{2}-\d{2}T\S+)\s(.*)$/;
+
+// Streams chunk mid-line; accumulate and only emit completed lines
+function makeLineSplitter(onLine) {
+  let acc = '';
+  return (chunk) => {
+    acc += chunk.toString('utf8');
+    const lines = acc.split('\n');
+    acc = lines.pop();
+    for (const line of lines) {
+      if (line.trim()) onLine(line);
+    }
+  };
+}
+
 // --- Log stream reference counting ---
 // Map<gameId, { raw, refCount }>
 
 const activeLogStreams = new Map();
-
-// --- Console (attach) stream reference counting ---
-// Map<gameId, { stream, refCount }>
-
-const activeConsoleStreams = new Map();
-
-async function attachConsoleStream(io, id) {
-  const entry = activeConsoleStreams.get(id);
-  if (entry) {
-    entry.refCount++;
-    return;
-  }
-
-  const slot = { stream: null, refCount: 1 };
-  activeConsoleStreams.set(id, slot);
-
-  let stream;
-  try {
-    stream = await new Promise((resolve, reject) => {
-      docker.getContainer(`serverdock-${id}`).attach(
-        { stream: true, stdin: true, stdout: true, stderr: true },
-        (err, s) => (err ? reject(err) : resolve(s))
-      );
-    });
-  } catch {
-    activeConsoleStreams.delete(id);
-    return;
-  }
-
-  if (!activeConsoleStreams.has(id)) {
-    stream.destroy();
-    return;
-  }
-
-  slot.stream = stream;
-  logger.info({ gameId: id }, 'console stream attached');
-
-  const stdout = new PassThrough();
-  const stderr = new PassThrough();
-  docker.modem.demuxStream(stream, stdout, stderr);
-
-  const handleData = (chunk) => {
-    const lines = chunk.toString('utf8').split('\n');
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      io.to(`console:${id}`).emit('console:line', { id, line: stripAnsi(line), level: detectLevel(line) });
-    }
-  };
-
-  stdout.on('data', handleData);
-  stderr.on('data', handleData);
-
-  stream.on('end', () => {
-    logger.info({ gameId: id }, 'console stream ended');
-    io.to(`console:${id}`).emit('console:end', { id });
-    activeConsoleStreams.delete(id);
-  });
-
-  stream.on('error', () => {
-    activeConsoleStreams.delete(id);
-  });
-}
-
-function detachConsoleStream(id) {
-  const entry = activeConsoleStreams.get(id);
-  if (!entry) return;
-  entry.refCount--;
-  if (entry.refCount <= 0) {
-    logger.info({ gameId: id }, 'console stream detached');
-    if (entry.stream) entry.stream.destroy();
-    activeConsoleStreams.delete(id);
-  }
-}
-
-function sendConsoleInput(id, input) {
-  const entry = activeConsoleStreams.get(id);
-  if (!entry?.stream) return false;
-  try {
-    entry.stream.write(`${input}\n`);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 async function attachLogStream(io, id) {
   const entry = activeLogStreams.get(id);
@@ -123,13 +74,20 @@ async function attachLogStream(io, id) {
   const slot = { raw: null, refCount: 1 };
   activeLogStreams.set(id, slot);
 
+  // Lines up to the last buffered timestamp were already delivered (live or via
+  // log:history replay) — `since` keeps a re-attach from re-broadcasting them.
+  const buf = logBuffers.get(id);
+  const lastTs = buf?.length ? buf[buf.length - 1].ts : null;
+
   let raw;
   try {
     raw = await docker.getContainer(`serverdock-${id}`).logs({
       follow: true,
       stdout: true,
       stderr: true,
+      timestamps: true,
       tail: 100,
+      ...(lastTs ? { since: (new Date(lastTs).getTime() + 1) / 1000 } : {}),
     });
   } catch {
     // Container not running or doesn't exist — slot cleaned up, caller retries on next status transition
@@ -150,25 +108,29 @@ async function attachLogStream(io, id) {
   const stderr = new PassThrough();
   docker.modem.demuxStream(raw, stdout, stderr);
 
-  const handleData = (chunk) => {
-    const lines = chunk.toString('utf8').split('\n');
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      io.to(`logs:${id}`).emit('log:line', { id, line, level: detectLevel(line) });
-    }
+  const handleLine = (rawLine) => {
+    const m = TS_PREFIX.exec(rawLine);
+    const ts = m ? m[1] : new Date().toISOString();
+    const line = m ? m[2] : rawLine;
+    if (!line.trim()) return;
+    const entry = { ts, line, level: detectLevel(line) };
+    pushLogBuffer(id, entry);
+    io.to(`logs:${id}`).emit('log:line', { id, ...entry });
   };
 
-  stdout.on('data', handleData);
-  stderr.on('data', handleData);
+  stdout.on('data', makeLineSplitter(handleLine));
+  stderr.on('data', makeLineSplitter(handleLine));
 
   raw.on('end', () => {
     logger.info({ gameId: id }, 'log stream ended');
     io.to(`logs:${id}`).emit('log:end', { id });
-    activeLogStreams.delete(id);
+    // Only evict if this slot is still the active one — a replaced (leave→join)
+    // stream's late 'end' must not delete the slot of the stream that succeeded it.
+    if (activeLogStreams.get(id) === slot) activeLogStreams.delete(id);
   });
 
   raw.on('error', () => {
-    activeLogStreams.delete(id);
+    if (activeLogStreams.get(id) === slot) activeLogStreams.delete(id);
   });
 }
 
@@ -185,16 +147,32 @@ function detachLogStream(id) {
 
 // --- Background status poll ---
 
-const lastKnownStatus = new Map();
+let dockerDown = false;
 
 async function pollStatus(io) {
+  // Docker daemon reachability — going silent here would hide every other signal
+  try {
+    await docker.ping();
+    if (dockerDown) {
+      dockerDown = false;
+      logger.info('docker daemon reachable again');
+      emitDockerStatus(true);
+    }
+  } catch {
+    if (!dockerDown) {
+      dockerDown = true;
+      logger.error('docker daemon unreachable');
+      emitDockerStatus(false);
+    }
+    return;
+  }
+
   for (const game of getGames()) {
+    // An operation (start/pull/stop/…) owns this id right now — don't fight it
+    if (getTransient(game.id)) continue;
     try {
-      let status = await getContainerStatus(game.id);
-      // If the container exited unexpectedly with an error code but the admin
-      // initiated the stop, downgrade to stopped so it doesn't show as crashed.
-      if (status === 'error' && adminStops.has(game.id)) status = 'stopped';
-      const prev = lastKnownStatus.get(game.id);
+      const status = await getEffectiveStatus(game.id);
+      const prev = getLastKnown(game.id);
       // Query player count for running games with A2S configured
       if (status === 'running' && game.query?.type === 'a2s') {
         queryA2S(game.query.port)
@@ -205,25 +183,28 @@ async function pollStatus(io) {
       }
 
       if (prev !== status) {
-        lastKnownStatus.set(game.id, status);
-        io.to('status').emit('status:update', {
-          id: game.id,
-          status,
-          players: getPlayers(game.id),
-        });
+        emitStatus(game.id, status);
         logger.info({ gameId: game.id, from: prev ?? 'unknown', to: status }, 'status change');
 
-        // Crash detection: running → stopped/not_created/error not triggered by admin
-        if (prev === 'running' && (status === 'stopped' || status === 'not_created' || status === 'error')) {
-          if (adminStops.has(game.id)) {
-            adminStops.delete(game.id);
-          } else {
-            sendCrashNotification(game).catch(() => {});
-            io.to('status').emit('crash:alert', { id: game.id, name: game.name, status });
-          }
+        // A server that reaches running resets any stale admin-stop intent
+        if (status === 'running') clearAdminStop(game.id);
+
+        // Crash detection: an unexpected exit from running, or any entry into the
+        // error state (catches servers that die before the poll ever saw them run).
+        // prev === undefined is the first sighting after backend boot — show the
+        // state but don't alert on stale history.
+        const crashed =
+          prev !== undefined &&
+          ((prev === 'running' &&
+            (status === 'stopped' || status === 'not_created' || status === 'error')) ||
+            (status === 'error' && prev !== 'error'));
+        if (crashed && !consumeAdminStop(game.id)) {
+          const exitInfo = await getContainerExitInfo(game.id);
+          sendCrashNotification(game, exitInfo).catch(() => {});
+          emitCrashAlert({ id: game.id, name: game.name, status, exitInfo });
         }
 
-        // Auto-attach log stream when a container starts running and someone is watching
+        // Auto-attach the log stream when a container starts running and someone is watching
         if (status === 'running' && !activeLogStreams.has(game.id)) {
           const room = io.sockets.adapter.rooms.get(`logs:${game.id}`);
           if (room && room.size > 0) {
@@ -232,7 +213,7 @@ async function pollStatus(io) {
         }
       }
     } catch {
-      // Docker unavailable — skip
+      // per-game failure — retried next tick
     }
   }
 }
@@ -258,14 +239,17 @@ export function setupSocketHandlers(io) {
     socket.on('join:status', async () => {
       socket.join('status');
       try {
+        // Snapshot only — lastKnown belongs to the poll, so a join right after a
+        // crash can't erase the transition before the poll alerts on it.
         const snapshot = await Promise.all(
-          getGames().map(async (game) => {
-            const status = await getContainerStatus(game.id);
-            lastKnownStatus.set(game.id, status);
-            return { id: game.id, status, players: getPlayers(game.id) };
-          })
+          getGames().map(async (game) => ({
+            id: game.id,
+            status: await getEffectiveStatus(game.id),
+            players: getPlayers(game.id),
+          }))
         );
         socket.emit('status:all', snapshot);
+        socket.emit('docker:status', { available: !dockerDown });
       } catch {
         // Docker unavailable — client will get updates when it recovers
       }
@@ -280,6 +264,10 @@ export function setupSocketHandlers(io) {
       if (!socket.user) return socket.emit('error', { message: 'Authentication required' });
       if (!id) return;
       socket.join(`logs:${id}`);
+      // Replay buffered history to this socket only — the live stream may already
+      // be attached for another viewer, in which case no tail will be re-fetched.
+      const history = logBuffers.get(id);
+      if (history?.length) socket.emit('log:history', { id, lines: history });
       try {
         await attachLogStream(io, id);
       } catch {
@@ -305,28 +293,16 @@ export function setupSocketHandlers(io) {
       socket.leave(`build:${id}`);
     });
 
-    // Console room — JWT required; attaches to container stdin/stdout
-    socket.on('join:console', async ({ id } = {}) => {
-      if (!socket.user) return socket.emit('error', { message: 'Authentication required' });
-      if (!id) return;
-      socket.join(`console:${id}`);
-      try {
-        await attachConsoleStream(io, id);
-      } catch {
-        // container not reachable
-      }
-    });
-
-    socket.on('leave:console', ({ id } = {}) => {
-      if (!id) return;
-      socket.leave(`console:${id}`);
-      detachConsoleStream(id);
-    });
-
-    socket.on('console:input', ({ id, input } = {}) => {
+    // Console input — JWT required. Output is observed via the logs room; this
+    // only writes to stdin through a short-lived, stdin-only attach.
+    socket.on('console:input', async ({ id, input } = {}) => {
       if (!socket.user) return socket.emit('error', { message: 'Authentication required' });
       if (!id || typeof input !== 'string') return;
-      sendConsoleInput(id, input.slice(0, 1024));
+      try {
+        await sendStdinCommand(id, input.slice(0, 1024));
+      } catch {
+        // container not running / not reachable — caller sees no echo response
+      }
     });
 
     // Stats room — JWT required
@@ -347,16 +323,15 @@ export function setupSocketHandlers(io) {
       detachStatsStream(id);
     });
 
-    socket.on('disconnect', () => {
+    // 'disconnecting' — not 'disconnect' — because socket.rooms is already empty
+    // by the time 'disconnect' fires, which would leak every attached stream.
+    socket.on('disconnecting', () => {
       for (const room of socket.rooms) {
         if (room.startsWith('logs:')) {
           detachLogStream(room.slice(5));
         }
         if (room.startsWith('stats:')) {
           detachStatsStream(room.slice(6));
-        }
-        if (room.startsWith('console:')) {
-          detachConsoleStream(room.slice(8));
         }
       }
     });

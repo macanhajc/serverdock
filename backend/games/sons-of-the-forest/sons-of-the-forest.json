@@ -1,0 +1,25 @@
+{
+  "id": "sons-of-the-forest",
+  "name": "Sons of the Forest",
+  "description": "Survival horror multiplayer server",
+  "imageSource": "public",
+  "image": "jammsen/sons-of-the-forest-dedicated-server:latest",
+  "dataMount": "/sonsoftheforest",
+  "query": { "type": "a2s", "port": 27016 },
+  "ports": [
+    { "host": 8766, "container": 8766, "protocol": "udp" },
+    { "host": 9700, "container": 9700, "protocol": "udp" },
+    { "host": 27016, "container": 27016, "protocol": "udp" }
+  ],
+  "environment": [
+    { "key": "PUID", "value": "1000", "pinned": false },
+    { "key": "PGID", "value": "1000", "pinned": false },
+    { "key": "ALWAYS_UPDATE_ON_START", "value": "true", "pinned": false },
+    { "key": "SKIP_NETWORK_ACCESSIBILITY_TEST", "value": "true", "pinned": false }
+  ],
+  "rcon": { "enabled": false },
+  "resources": {
+    "cpuLimit": 2,
+    "memoryLimit": 6144
+  }
+}

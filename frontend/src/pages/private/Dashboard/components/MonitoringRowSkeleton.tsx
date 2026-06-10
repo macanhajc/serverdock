@@ -11,6 +11,9 @@ export function MonitoringRowSkeleton() {
         <div className="h-3 w-16 bg-bg-2 rounded-[1px]" />
       </div>
       <div className="px-4 py-4 flex items-center">
+        <div className="h-3 w-14 bg-bg-2 rounded-[1px]" />
+      </div>
+      <div className="px-4 py-4 flex items-center">
         <div className="h-3 w-8 bg-bg-2 rounded-[1px]" />
       </div>
       {[0, 1, 2, 3].map((i) => (

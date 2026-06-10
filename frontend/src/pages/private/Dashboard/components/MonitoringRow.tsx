@@ -1,26 +1,28 @@
 import { Play, RotateCw, Square, Trash2 } from "lucide-react";
-import { Button, StatusBadge } from "../../../../components";
+import { useTranslation } from "react-i18next";
+import { Button, CopyButton, StatusBadge } from "../../../../components";
+import { UptimeTicker } from "../../../../components/core/UptimeTicker";
 import { fmtBytes } from "../../../../utils/format";
-import { toUiStatus } from "../../../../utils/serverStatus";
-import { Server, ServerStats } from "../../../../types";
+import { toUiStatus, IN_FLIGHT } from "../../../../utils/serverStatus";
+import { Server, ServerStats, PullProgress } from "../../../../types";
 import { COLS } from "../";
 
 interface MonitoringRowProps {
   server: Server;
   stats: ServerStats | undefined;
+  pull?: PullProgress;
   navigate: (path: string) => void;
   onStart: () => void;
   onStop: () => void;
   onRestart: () => void;
   onWipe: () => void;
   actionLoading: string | null | undefined;
-  hostTotalMem: number | null;
-  hostCpuCount: number | null;
 }
 
 export function MonitoringRow({
   server,
   stats,
+  pull,
   navigate,
   onStart,
   onStop,
@@ -28,11 +30,18 @@ export function MonitoringRow({
   onWipe,
   actionLoading,
 }: MonitoringRowProps) {
+  const { t } = useTranslation();
   const { id, name, status } = server;
   const isRunning = status === 'running';
   const isNotCreated = status === 'stopped' || status === 'not_created' || status === 'error';
-  const busy = !!actionLoading;
+  // Busy if this client has a request in flight, or any client/scheduler does
+  const busy = !!actionLoading || IN_FLIGHT.includes(status);
   const memMax = stats?.memLimit ?? null;
+
+  const badgeLabel =
+    status === 'pulling' && pull
+      ? `${t(pull.phase === 'extracting' ? 'status.extracting' : 'status.pulling')} ${pull.percent}%`
+      : undefined;
 
   function act(e: React.MouseEvent, handler: () => void) {
     e.stopPropagation();
@@ -51,7 +60,17 @@ export function MonitoringRow({
       </div>
 
       <div className="flex items-center border-r border-line px-4 py-3.5">
-        <StatusBadge status={toUiStatus(status)} />
+        <StatusBadge status={toUiStatus(status)}>{badgeLabel}</StatusBadge>
+      </div>
+
+      <div className="flex items-center border-r border-line px-4 py-3.5">
+        {isRunning && server.startedAt ? (
+          <span className="font-mono text-xs text-ink whitespace-nowrap">
+            <UptimeTicker startedAt={server.startedAt} />
+          </span>
+        ) : (
+          <span className="font-mono text-xs text-ink-3">—</span>
+        )}
       </div>
 
       <div className="flex items-center border-r border-line px-4 py-3.5">
@@ -108,11 +127,17 @@ export function MonitoringRow({
         )}
       </div>
 
-      <div className="flex items-center border-r border-line px-4 py-3.5">
+      <div className="flex items-center gap-2 border-r border-line px-4 py-3.5">
         {server.connection ? (
-          <span className="font-mono text-xs text-ink">
-            {server.connection.host}:{server.connection.port}
-          </span>
+          <>
+            <span className="font-mono text-xs text-ink">
+              {server.connection.host}:{server.connection.port}
+            </span>
+            <CopyButton
+              text={`${server.connection.host}:${server.connection.port}`}
+              className="opacity-0 group-hover:opacity-100 transition-opacity"
+            />
+          </>
         ) : (
           <span className="font-mono text-xs text-ink-3">—</span>
         )}
@@ -124,7 +149,8 @@ export function MonitoringRow({
           variant="primary"
           className="p-1.5"
           disabled={!isNotCreated || busy}
-          title="Start"
+          title={t('adminDashboard.actStart')}
+          aria-label={t('adminDashboard.actStart')}
           onClick={(e) => act(e, onStart)}
         >
           <Play size={12} />
@@ -134,7 +160,8 @@ export function MonitoringRow({
           variant="danger"
           className="p-1.5"
           disabled={!isRunning || busy}
-          title="Stop"
+          title={t('adminDashboard.actStop')}
+          aria-label={t('adminDashboard.actStop')}
           onClick={(e) => act(e, onStop)}
         >
           <Square size={12} />
@@ -143,7 +170,8 @@ export function MonitoringRow({
           size="sm"
           className="p-1.5"
           disabled={!isRunning || busy}
-          title="Restart"
+          title={t('adminDashboard.actRestart')}
+          aria-label={t('adminDashboard.actRestart')}
           onClick={(e) => act(e, onRestart)}
         >
           <RotateCw size={12} />
@@ -153,7 +181,8 @@ export function MonitoringRow({
           variant="danger"
           className="p-1.5"
           disabled={busy}
-          title="Wipe"
+          title={t('adminDashboard.actReset')}
+          aria-label={t('adminDashboard.actReset')}
           onClick={(e) => act(e, onWipe)}
         >
           <Trash2 size={12} />

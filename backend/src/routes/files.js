@@ -1,5 +1,6 @@
-import { readdir, stat, readFile, writeFile, rename, realpath, open, rm } from 'fs/promises';
-import { join, dirname, resolve as resolvePath } from 'path';
+import { createReadStream } from 'fs';
+import { readdir, stat, readFile, writeFile, rename, realpath, open, rm, mkdir } from 'fs/promises';
+import { join, dirname, basename, resolve as resolvePath } from 'path';
 import { Router } from 'express';
 import multer from 'multer';
 import { verifyToken } from '../middleware/auth.js';
@@ -121,6 +122,56 @@ router.get('/:id/read', verifyToken, async (req, res) => {
 
   const content = await readFile(real, 'utf-8');
   res.json({ path: clientPath, content });
+});
+
+// GET /api/files/:id/download?path=<file>
+router.get('/:id/download', verifyToken, async (req, res) => {
+  const game = getGame(req.params.id);
+  if (!game) return res.status(404).json({ error: 'Game not found' });
+
+  const clientPath = req.query.path;
+  if (!clientPath) return res.status(400).json({ error: 'path is required' });
+
+  const root = getDataPath(game.id);
+  const { real, err } = await sandboxRealpath(root, clientPath);
+  if (err === 403) return res.status(403).json({ error: 'Path not allowed' });
+  if (err === 404) return res.status(404).json({ error: 'File not found' });
+
+  let fileStat;
+  try {
+    fileStat = await stat(real);
+  } catch {
+    return res.status(404).json({ error: 'File not found' });
+  }
+  if (!fileStat.isFile()) return res.status(400).json({ error: 'Not a file' });
+
+  const filename = basename(real).replace(/["\\]/g, '_');
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Length', fileStat.size);
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+  const stream = createReadStream(real);
+  stream.on('error', () => {
+    if (!res.headersSent) res.status(500).json({ error: 'Read failed' });
+    else res.destroy();
+  });
+  stream.pipe(res);
+});
+
+// POST /api/files/:id/mkdir
+router.post('/:id/mkdir', verifyToken, async (req, res) => {
+  const game = getGame(req.params.id);
+  if (!game) return res.status(404).json({ error: 'Game not found' });
+
+  const clientPath = req.body?.path;
+  if (!clientPath) return res.status(400).json({ error: 'path is required' });
+
+  const root = getDataPath(game.id);
+  const resolved = sandboxResolve(root, clientPath);
+  if (!resolved) return res.status(403).json({ error: 'Path not allowed' });
+
+  await mkdir(resolved, { recursive: true });
+  res.status(201).json({ message: 'Folder created' });
 });
 
 // POST /api/files/:id/upload?path=<dir>

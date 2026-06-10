@@ -2,27 +2,19 @@ import { Router } from 'express';
 import { verifyToken } from '../middleware/auth.js';
 import { getGames, getGame } from '../lib/gameLoader.js';
 import {
-  getContainerStatus,
+  getEffectiveStatus,
   getContainerStartedAt,
   startContainer,
   stopContainer,
   restartContainer,
   resetContainer,
 } from '../lib/containers.js';
-import { getIo } from '../lib/socket.js';
 import { getPlayers, setPlayers } from '../lib/playerQuery.js';
 import { getSelfIp } from '../lib/vpn/index.js';
 import { getSettings } from '../lib/settingsStore.js';
-import { getDirSize } from '../lib/diskUtils.js';
+import { getDirSizeCached } from '../lib/diskUtils.js';
 import { getDataPath } from '../lib/gameLoader.js';
-import { markAdminStop } from '../lib/socketHandlers.js';
 import { sendRconCommand } from '../lib/rcon.js';
-
-function emitStatusUpdate(id, status) {
-  getIo()
-    ?.to('status')
-    .emit('status:update', { id, status, players: getPlayers(id) });
-}
 
 const router = Router();
 
@@ -36,7 +28,7 @@ async function buildServerResponse(game, status) {
   const firstPort = game.ports?.[0];
   const [host, diskUsed, startedAt] = await Promise.all([
     resolveHost(),
-    getDirSize(getDataPath(game.id)),
+    getDirSizeCached(getDataPath(game.id)),
     getContainerStartedAt(game.id),
   ]);
   return {
@@ -72,7 +64,7 @@ router.get('/', async (req, res) => {
   const games = getGames();
   const results = await Promise.all(
     games.map(async (game) => {
-      const status = await getContainerStatus(game.id);
+      const status = await getEffectiveStatus(game.id);
       return buildServerResponse(game, status);
     })
   );
@@ -83,16 +75,17 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
-  const status = await getContainerStatus(game.id);
+  const status = await getEffectiveStatus(game.id);
   res.json(await buildServerResponse(game, status));
 });
 
 // POST /api/servers/:id/start — JWT
+// startContainer broadcasts every phase (pulling/starting/running) over the
+// status room; the held request still reports the final outcome to the caller.
 router.post('/:id/start', verifyToken, async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
   await startContainer(game);
-  emitStatusUpdate(game.id, 'running');
   res.json({ status: 'running' });
 });
 
@@ -100,10 +93,8 @@ router.post('/:id/start', verifyToken, async (req, res) => {
 router.post('/:id/stop', verifyToken, async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
-  markAdminStop(game.id);
+  setPlayers(game.id, null); // before the stop so the final emission carries no players
   await stopContainer(game.id);
-  setPlayers(game.id, null);
-  emitStatusUpdate(game.id, 'stopped');
   res.json({ status: 'stopped' });
 });
 
@@ -112,7 +103,6 @@ router.post('/:id/restart', verifyToken, async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
   await restartContainer(game.id);
-  emitStatusUpdate(game.id, 'running');
   res.json({ status: 'running' });
 });
 
@@ -127,7 +117,7 @@ router.post('/:id/rcon', verifyToken, async (req, res) => {
     return res.status(400).json({ error: 'Command is required' });
   }
 
-  const status = await getContainerStatus(game.id);
+  const status = await getEffectiveStatus(game.id);
   if (status !== 'running') return res.status(409).json({ error: 'Server is not running' });
 
   try {
@@ -145,10 +135,8 @@ router.post('/:id/reset', verifyToken, async (req, res) => {
   }
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
-  markAdminStop(game.id);
-  await resetContainer(game.id);
   setPlayers(game.id, null);
-  emitStatusUpdate(game.id, 'not_created');
+  await resetContainer(game.id);
   res.json({ status: 'not_created' });
 });
 

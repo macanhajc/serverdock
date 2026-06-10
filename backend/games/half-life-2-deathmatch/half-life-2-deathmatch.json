@@ -9,7 +9,13 @@
     "type": "a2s",
     "port": 27015
   },
-  "ports": [],
+  "ports": [
+    {
+      "host": 27015,
+      "container": 27015,
+      "protocol": "tcp"
+    }
+  ],
   "environment": [
     {
       "key": "GAME_ID",

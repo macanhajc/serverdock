@@ -332,7 +332,7 @@ export default function GameForm() {
     }
 
     if (!buildAfter) {
-      navigate('/admin');
+      navigate(`/admin/servers/${id ?? slug}`);
       return;
     }
 
@@ -607,40 +607,25 @@ export default function GameForm() {
               </div>
             )}
             <div className="flex flex-col gap-2">
-              {ports.map((p, i) => (
-                <PortRow key={i} port={p} idx={i} onChange={updatePort} onRemove={removePort} />
-              ))}
-            </div>
-
-            {(() => {
-              const takenMap = new Map<string, string>();
-              for (const g of otherGames) {
-                for (const p of g.ports ?? []) {
-                  takenMap.set(`${p.host}/${p.protocol}`, g.name);
+              {(() => {
+                const takenMap = new Map<string, string>();
+                for (const g of otherGames) {
+                  for (const p of g.ports ?? []) {
+                    takenMap.set(`${p.host}/${p.protocol}`, g.name);
+                  }
                 }
-              }
-              const conflicts = ports
-                .filter((p) => p.host && takenMap.has(`${p.host}/${p.protocol}`))
-                .map((p) => ({
-                  host: p.host,
-                  protocol: p.protocol,
-                  usedBy: takenMap.get(`${p.host}/${p.protocol}`),
-                }));
-              if (!conflicts.length) return null;
-              return (
-                <div className="mt-2 px-3 py-2 border border-yellow/40 bg-yellow/5 font-mono text-xs text-yellow flex flex-col gap-1">
-                  {conflicts.map((c, i) => (
-                    <span key={i}>
-                      {t('gameForm.portConflict', {
-                        port: c.host,
-                        protocol: c.protocol,
-                        game: c.usedBy,
-                      })}
-                    </span>
-                  ))}
-                </div>
-              );
-            })()}
+                return ports.map((p, i) => (
+                  <PortRow
+                    key={i}
+                    port={p}
+                    idx={i}
+                    onChange={updatePort}
+                    onRemove={removePort}
+                    conflictsWith={p.host ? takenMap.get(`${p.host}/${p.protocol}`) : undefined}
+                  />
+                ));
+              })()}
+            </div>
 
             <AddRowBtn onClick={addPort} label={t('gameForm.addPort')} />
           </FormSection>
