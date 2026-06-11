@@ -34,7 +34,7 @@ function FileItem({
 }: FileItemProps) {
   const { t } = useTranslation();
   const isDir = type === 'directory';
-  const hasMenu = !!onRename && !!onRemove;
+  const hasMenu = !!onRename || !!onRemove || !!onDownload;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
@@ -133,12 +133,14 @@ function FileItem({
             style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999 }}
             className="bg-bg-2 border border-line-2 py-0.5 min-w-32.5"
           >
-            <button
-              className="w-full text-left px-3 py-2 font-mono text-xs text-ink-2 hover:bg-bg-3 hover:text-ink cursor-pointer"
-              onClick={startRename}
-            >
-              {t('serverDetail.rename')}
-            </button>
+            {onRename && (
+              <button
+                className="w-full text-left px-3 py-2 font-mono text-xs text-ink-2 hover:bg-bg-3 hover:text-ink cursor-pointer"
+                onClick={startRename}
+              >
+                {t('serverDetail.rename')}
+              </button>
+            )}
             {onDownload && (
               <button
                 className="w-full text-left px-3 py-2 font-mono text-xs text-ink-2 hover:bg-bg-3 hover:text-ink cursor-pointer"
@@ -150,15 +152,17 @@ function FileItem({
                 {t('serverDetail.filesDownload')}
               </button>
             )}
-            <button
-              className="w-full text-left px-3 py-2 font-mono text-xs text-red hover:bg-bg-3 cursor-pointer"
-              onClick={() => {
-                setMenuOpen(false);
-                onRemove?.();
-              }}
-            >
-              {t('serverDetail.remove')}
-            </button>
+            {onRemove && (
+              <button
+                className="w-full text-left px-3 py-2 font-mono text-xs text-red hover:bg-bg-3 cursor-pointer"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onRemove();
+                }}
+              >
+                {t('serverDetail.remove')}
+              </button>
+            )}
           </div>,
           document.body
         )}
@@ -171,9 +175,12 @@ function FileItem({
 interface FilesTabProps {
   id: string;
   token: string | null;
+  // Files are mutable only while the server is stopped; the backend enforces
+  // this too (409). When false the UI is read-only: browse/view/download only.
+  editable: boolean;
 }
 
-export function FilesTab({ id, token }: FilesTabProps) {
+export function FilesTab({ id, token, editable }: FilesTabProps) {
   const { t } = useTranslation();
   const { addToast } = useToast();
 
@@ -244,7 +251,7 @@ export function FilesTab({ id, token }: FilesTabProps) {
   }
 
   async function saveFile() {
-    if (!openFile || fileSaving) return;
+    if (!openFile || fileSaving || !editable) return;
     setFileSaving(true);
     setFileError('');
     try {
@@ -281,7 +288,7 @@ export function FilesTab({ id, token }: FilesTabProps) {
   }
 
   async function uploadFiles(fileList: File[]) {
-    if (!fileList.length) return;
+    if (!fileList.length || !editable) return;
     setUploading(true);
     const form = new FormData();
     for (const f of fileList) form.append('files', f);
@@ -424,7 +431,7 @@ export function FilesTab({ id, token }: FilesTabProps) {
     const kind = creating;
     setCreating(null);
     setCreateName('');
-    if (!name || !kind) return;
+    if (!name || !kind || !editable) return;
     if (name.includes('/') || name.includes('\\')) {
       addToast(t('serverDetail.filesCreateFailed'));
       return;
@@ -470,10 +477,10 @@ export function FilesTab({ id, token }: FilesTabProps) {
     <div className="h-full grid grid-cols-[320px_1fr] overflow-hidden">
       <div
         className="flex flex-col border-r border-line bg-bg-1 overflow-hidden relative"
-        onDragEnter={onDragEnter}
-        onDragLeave={onDragLeave}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
+        onDragEnter={editable ? onDragEnter : undefined}
+        onDragLeave={editable ? onDragLeave : undefined}
+        onDragOver={editable ? onDragOver : undefined}
+        onDrop={editable ? onDrop : undefined}
       >
         {dragCount > 0 && (
           <div
@@ -514,29 +521,40 @@ export function FilesTab({ id, token }: FilesTabProps) {
               )}
             </Fragment>
           ))}
-          <span className="ml-auto flex gap-2 flex-none">
-            <button
-              className="text-ink-3 hover:text-ink cursor-pointer"
-              title={t('serverDetail.filesNewFile')}
-              onClick={() => {
-                setCreating('file');
-                setCreateName('');
-              }}
-            >
-              +{t('serverDetail.filesNewFile')}
-            </button>
-            <button
-              className="text-ink-3 hover:text-ink cursor-pointer"
-              title={t('serverDetail.filesNewFolder')}
-              onClick={() => {
-                setCreating('directory');
-                setCreateName('');
-              }}
-            >
-              +{t('serverDetail.filesNewFolder')}
-            </button>
-          </span>
+          {editable && (
+            <span className="ml-auto flex gap-2 flex-none">
+              <button
+                className="text-ink-3 hover:text-ink cursor-pointer"
+                title={t('serverDetail.filesNewFile')}
+                onClick={() => {
+                  setCreating('file');
+                  setCreateName('');
+                }}
+              >
+                +{t('serverDetail.filesNewFile')}
+              </button>
+              <button
+                className="text-ink-3 hover:text-ink cursor-pointer"
+                title={t('serverDetail.filesNewFolder')}
+                onClick={() => {
+                  setCreating('directory');
+                  setCreateName('');
+                }}
+              >
+                +{t('serverDetail.filesNewFolder')}
+              </button>
+            </span>
+          )}
         </div>
+
+        {!editable && (
+          <div
+            className="flex items-center gap-2 px-4 py-2 border-b border-line font-mono text-[11px] text-yellow flex-none"
+            style={{ background: 'color-mix(in oklab, var(--yellow) 8%, transparent)' }}
+          >
+            {t('serverDetail.filesReadOnly')}
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-2">
           {creating && (
@@ -576,8 +594,8 @@ export function FilesTab({ id, token }: FilesTabProps) {
                 modified={entry.modified}
                 active={openFile?.path === ep}
                 onClick={() => handleEntryClick(entry)}
-                onRename={(newName) => renameEntry(entry, newName)}
-                onRemove={() => setConfirmRemove(entry)}
+                onRename={editable ? (newName) => renameEntry(entry, newName) : undefined}
+                onRemove={editable ? () => setConfirmRemove(entry) : undefined}
                 onDownload={entry.type === 'file' ? () => downloadEntry(entry) : undefined}
               />
             );
@@ -626,7 +644,7 @@ export function FilesTab({ id, token }: FilesTabProps) {
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={!fileDirty || fileSaving}
+                disabled={!editable || !fileDirty || fileSaving}
                 onClick={() => {
                   setFileContent(savedContent);
                   setFileError('');
@@ -637,7 +655,7 @@ export function FilesTab({ id, token }: FilesTabProps) {
               <Button
                 size="sm"
                 variant={fileDirty ? 'primary' : 'default'}
-                disabled={!fileDirty || fileSaving}
+                disabled={!editable || !fileDirty || fileSaving}
                 onClick={saveFile}
               >
                 {fileSaving ? t('serverDetail.saving') : t('serverDetail.save')}
@@ -669,6 +687,7 @@ export function FilesTab({ id, token }: FilesTabProps) {
               onChange={(e) => setFileContent(e.target.value)}
               onScroll={syncScroll}
               onKeyDown={onEditorKeyDown}
+              readOnly={!editable}
               spellCheck={false}
               className="flex-1 py-4 px-4 font-mono text-[12.5px] leading-[1.7] text-[#c8c8c8] bg-[#0c0c0c] resize-none outline-none border-0 min-h-0"
             />

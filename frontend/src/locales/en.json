@@ -270,6 +270,7 @@
     "filesDownload": "Download",
     "filesDownloadFailed": "Download failed",
     "filesLoadFailed": "Could not load this folder",
+    "filesReadOnly": "Stop the server to edit, upload, rename, or delete files.",
     "filesDeleteTitle": "Delete “{{name}}”?",
     "filesDeleteFileMessage": "This file will be permanently deleted. This cannot be undone.",
     "filesDeleteFolderMessage": "This folder and everything inside it will be permanently deleted. This cannot be undone.",

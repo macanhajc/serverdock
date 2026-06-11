@@ -107,6 +107,7 @@ cd backend && node setup-auth.js --username admin --password yourpassword
 ## File Manager Rules
 
 - Sandbox: all paths are resolved against `backend/games/<id>/data/` (absolute path via `getDataPath(id)`) — anything that escapes returns 403.
+- **Mutations require a stopped server.** The `requireStopped` middleware guards `mkdir`/`upload`/`write`/`rename`/`delete` and returns **409** ("Stop the server before changing its files") unless the effective status is `stopped`/`not_created`/`error` — a live container may hold files open or overwrite them mid-edit. Read/list/download work in any state. The admin Files tab mirrors this: it goes read-only while the server is running.
 - Binary detection: read first 512 bytes, reject if null bytes found.
 - Max file size for editing: 512 KB.
 - Atomic writes: write to `.tmp` → rename to target.
@@ -128,6 +129,7 @@ Stable states (`not_created`/`running`/`stopped`/`error`) are always read from D
 - Do not add a relational database or any persistent session store.
 - Do not expose any port to the public internet.
 - Do not skip path traversal validation in the file manager.
+- Do not allow file mutations (write/upload/rename/delete/mkdir) while the container is running — they require a stopped server.
 - Do not change a game's `id` field after creation — it is tied to the container name, volume path, and all API routes.
 - Do not set `RestartPolicy` to anything other than `"no"` unless explicitly requested.
 - Do not implement RCON player management yet — it is deferred.

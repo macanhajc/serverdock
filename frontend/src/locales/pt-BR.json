@@ -270,6 +270,7 @@
     "filesDownload": "Baixar",
     "filesDownloadFailed": "Falha ao baixar",
     "filesLoadFailed": "Não foi possível carregar esta pasta",
+    "filesReadOnly": "Pare o servidor para editar, enviar, renomear ou excluir arquivos.",
     "filesDeleteTitle": "Excluir “{{name}}”?",
     "filesDeleteFileMessage": "Este arquivo será excluído permanentemente. Isso não pode ser desfeito.",
     "filesDeleteFolderMessage": "Esta pasta e todo o seu conteúdo serão excluídos permanentemente. Isso não pode ser desfeito.",

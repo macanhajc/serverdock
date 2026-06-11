@@ -380,6 +380,7 @@ The 30-second polling loop (in `socketHandlers.js`) compares the current contain
 | Docker daemon unreachable | 503: "Docker unavailable" |
 | Reset without `confirm: true` | 400: "Reset not confirmed" |
 | Delete game while running | 409: "Stop the server before deleting the game" |
+| File mutation (write/upload/rename/delete/mkdir) while server running | 409: "Stop the server before changing its files" |
 | RCON not configured | 400: "RCON not configured" |
 | RCON connection failed | 502 with error message |
 
@@ -435,7 +436,8 @@ Socket reconnects on mount if a stored token is found.
 | `POST /api/servers/:id/rcon` | JWT |
 | `GET\|POST\|PUT\|DELETE /api/games/*` | JWT |
 | `POST /api/games/:id/build\|dockerfile` | JWT |
-| `GET\|GET\|PUT /api/files/:id` | JWT |
+| `GET /api/files/:id` · `/read` · `/download` | JWT |
+| `POST /api/files/:id/mkdir\|upload` · `PUT /write` · `PATCH /rename` · `DELETE /delete` | JWT — server must be stopped (409 otherwise) |
 | `GET\|POST\|PUT\|DELETE /api/schedules/:id/*` | JWT |
 | `GET\|POST /api/backups/:id` | JWT |
 | `GET /api/backups/:id/:backupId/download` | JWT or `?token=` |
@@ -700,9 +702,34 @@ Sorted: directories first, then files, both alphabetical.
 **`GET /api/files/:id/read?path=<file-path>`** — JWT  
 `200 { "path": "server.properties", "content": "..." }` | `400` binary | `400` >512 KB | `403` path traversal
 
-**`PUT /api/files/:id/write`** — JWT  
+**`GET /api/files/:id/download?path=<file-path>`** — JWT  
+Streams the raw file as `application/octet-stream` with a `Content-Disposition` attachment. `400` not a file | `403` path traversal | `404` not found.
+
+> **The five mutation routes below require a stopped server.** A `requireStopped`
+> guard returns `409 { "error": "Stop the server before changing its files" }`
+> unless the effective container status is `stopped`, `not_created`, or `error`.
+> For `upload` the guard runs before the file is buffered. The read/list/download
+> routes above are available in any state.
+
+**`POST /api/files/:id/mkdir`** — JWT · server stopped  
+Body: `{ "path": "config/mods" }` — creates the directory recursively.  
+`201 { "message": "Folder created" }` | `403` path traversal | `409` server running
+
+**`POST /api/files/:id/upload?path=<dir>`** — JWT · server stopped  
+`multipart/form-data` with one or more `files` fields (max 100 MB each). Filenames are stripped of path separators.  
+`200 { "uploaded": [{ "name": "...", "size": 1234 }] }` | `400` no files | `409` server running
+
+**`PUT /api/files/:id/write`** — JWT · server stopped  
 Body: `{ "path": "server.properties", "content": "..." }`  
-`200 { "message": "File saved" }` — written atomically (tmp → rename)
+`200 { "message": "File saved" }` — written atomically (tmp → rename) | `409` server running
+
+**`PATCH /api/files/:id/rename`** — JWT · server stopped  
+Body: `{ "path": "old.txt", "newName": "new.txt" }` — `newName` may not contain path separators.  
+`200 { "message": "Renamed" }` | `403` path traversal | `404` not found | `409` server running
+
+**`DELETE /api/files/:id/delete`** — JWT · server stopped  
+Body: `{ "path": "world" }` — removes a file or directory tree.  
+`200 { "message": "Deleted" }` | `403` path traversal | `404` not found | `409` server running
 
 ---
 
@@ -924,9 +951,21 @@ Cumulative totals from all container networks, converted to a per-second rate.
 
 ### Scope
 
-- Editing text config files in game data volumes (e.g. `server.properties`)
 - Browsing the directory tree under `backend/games/<id>/data/`
-- NOT for: uploading/downloading files, binary editing, anything outside `backend/games/<id>/data/`
+- Editing text config files in game data volumes (e.g. `server.properties`)
+- Creating files and folders, uploading files (drag-and-drop), renaming, downloading, and deleting
+- NOT for: binary editing, anything outside `backend/games/<id>/data/`
+
+### Write Access — Server Must Be Stopped
+
+Read operations (list, read, download) work in any state. **Every mutation
+(create, write, upload, rename, delete, mkdir) requires the server to be
+stopped** — a live container may hold files open or overwrite them mid-edit.
+The `requireStopped` middleware resolves the effective status and returns
+`409 "Stop the server before changing its files"` unless it is `stopped`,
+`not_created`, or `error`. The Files tab enforces the same rule client-side: the
+create/upload/rename/delete controls are hidden, the editor becomes read-only,
+and a notice explains why.
 
 ### Security
 
@@ -1023,8 +1062,10 @@ Unauthenticated access to `/admin/*` redirects to `/auth`.
 **Files tab:**
 - Breadcrumb navigation
 - Directory listing (dirs first, then files alphabetically)
-- Click file to open in monospace textarea editor; Save/Cancel; unsaved changes warning
-- Binary files shown with lock icon, not editable
+- Click file to open in a monospace textarea editor with line gutter; Save/Revert; unsaved-changes (discard) warning when navigating away; Ctrl/Cmd+S to save
+- New file / new folder buttons; drag-and-drop upload into the current folder; per-entry `···` menu with rename, download, and delete
+- Binary files and files >512 KB cannot be opened in the editor
+- **Read-only while the server is running:** create/upload/rename/delete controls are hidden, the editor is read-only, and a notice tells the user to stop the server first (the backend also enforces this with a 409)
 
 **Schedule tab:**
 - List of existing schedules with: enable/disable toggle, label, action badge, cron expression, human-readable preview, timezone, last-run status (✓/✗ with relative time)
@@ -1099,7 +1140,7 @@ Primarily desktop (1280px+). Mobile-responsive for the public dashboard only.
 - Access is VPN-gated. Do not expose ports 3000 or 4000 to the public internet.
 - JWT stored in `sessionStorage` (cleared when tab closes) — never `localStorage`.
 - Login attempts are rate-limited (express-rate-limit).
-- File manager: path traversal check on every operation; binary detection; 512 KB max edit; atomic writes.
+- File manager: path traversal check on every operation; binary detection; 512 KB max edit; atomic writes; mutations require a stopped server (409 otherwise).
 - RCON passwords are never returned to the client in API responses.
 - Web Push: VAPID keys are auto-generated and stored server-side; only the public key is exposed.
 - No HTTPS — VPN tunnel handles encryption.

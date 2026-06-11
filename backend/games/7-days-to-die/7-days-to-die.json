@@ -1,0 +1,93 @@
+{
+  "id": "7-days-to-die",
+  "name": "7 Days to Die",
+  "description": "Open-world zombie survival horror server",
+  "imageSource": "public",
+  "image": "ghcr.io/ich777/steamcmd:7dtd",
+  "dataMount": "/serverdata/serverfiles",
+  "query": {
+    "type": "a2s",
+    "port": 26900
+  },
+  "ports": [
+    {
+      "host": 26900,
+      "container": 26900,
+      "protocol": "tcp"
+    },
+    {
+      "host": 26900,
+      "container": 26900,
+      "protocol": "udp"
+    },
+    {
+      "host": 26901,
+      "container": 26901,
+      "protocol": "udp"
+    },
+    {
+      "host": 26902,
+      "container": 26902,
+      "protocol": "udp"
+    },
+    {
+      "host": 26903,
+      "container": 26903,
+      "protocol": "udp"
+    },
+    {
+      "host": 27015,
+      "container": 27015,
+      "protocol": "udp"
+    },
+    {
+      "host": 8080,
+      "container": 8080,
+      "protocol": "tcp"
+    },
+    {
+      "host": 8082,
+      "container": 8082,
+      "protocol": "tcp"
+    }
+  ],
+  "environment": [
+    {
+      "key": "GAME_ID",
+      "value": "294420",
+      "pinned": false
+    },
+    {
+      "key": "GAME_PARAMS",
+      "value": "-logfile 7DaysToDie_Data/output_log.txt -batchmode -nographics $@",
+      "pinned": false
+    },
+    {
+      "key": "SERVERCONFIG",
+      "value": "serverconfig.xml",
+      "pinned": false
+    },
+    {
+      "key": "VALIDATE",
+      "value": "false",
+      "pinned": false
+    },
+    {
+      "key": "UID",
+      "value": "1000",
+      "pinned": false
+    },
+    {
+      "key": "GID",
+      "value": "1000",
+      "pinned": false
+    }
+  ],
+  "resources": {
+    "cpuLimit": 4,
+    "memoryLimit": 8192
+  },
+  "rcon": {
+    "enabled": false
+  }
+}

@@ -520,7 +520,9 @@ export default function ServerDetail() {
             setLines={setLines}
           />
         </div>
-        {tab === 'files' && <FilesTab id={id!} token={token} />}
+        {/* Files are only mutable on a stopped server — `isNotCreated` is the
+            stopped/not_created/error set, matching the backend's editable states */}
+        {tab === 'files' && <FilesTab id={id!} token={token} editable={isNotCreated} />}
         {tab === 'schedule' && <ScheduleTab id={id!} token={token} />}
         {tab === 'backups' && <BackupTab id={id!} token={token} isRunning={isRunning} />}
       </div>

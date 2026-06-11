@@ -5,6 +5,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { verifyToken } from '../middleware/auth.js';
 import { getGame, getDataPath } from '../lib/gameLoader.js';
+import { getEffectiveStatus } from '../lib/containers.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -38,6 +39,23 @@ async function sandboxRealpath(root, clientPath) {
     return { err: 404 };
   }
   return withinSandbox(root, real) ? { real } : { err: 403 };
+}
+
+// File mutations are only allowed while the server is not running — a live
+// container may hold files open or overwrite them mid-edit. Reads/listing/
+// downloads stay available in any state. `getEffectiveStatus` also covers the
+// transient lifecycle states (starting/stopping/pulling/...), none of which are
+// editable. Used as middleware so uploads are rejected before multer buffers.
+const EDITABLE_STATES = new Set(['stopped', 'not_created', 'error']);
+
+async function requireStopped(req, res, next) {
+  const game = getGame(req.params.id);
+  if (!game) return res.status(404).json({ error: 'Game not found' });
+  const status = await getEffectiveStatus(game.id);
+  if (!EDITABLE_STATES.has(status)) {
+    return res.status(409).json({ error: 'Stop the server before changing its files' });
+  }
+  next();
 }
 
 // --- Routes ---
@@ -159,7 +177,7 @@ router.get('/:id/download', verifyToken, async (req, res) => {
 });
 
 // POST /api/files/:id/mkdir
-router.post('/:id/mkdir', verifyToken, async (req, res) => {
+router.post('/:id/mkdir', verifyToken, requireStopped, async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
 
@@ -175,7 +193,7 @@ router.post('/:id/mkdir', verifyToken, async (req, res) => {
 });
 
 // POST /api/files/:id/upload?path=<dir>
-router.post('/:id/upload', verifyToken, upload.array('files'), async (req, res) => {
+router.post('/:id/upload', verifyToken, requireStopped, upload.array('files'), async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
 
@@ -202,7 +220,7 @@ router.post('/:id/upload', verifyToken, upload.array('files'), async (req, res) 
 });
 
 // PUT /api/files/:id/write
-router.put('/:id/write', verifyToken, async (req, res) => {
+router.put('/:id/write', verifyToken, requireStopped, async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
 
@@ -223,7 +241,7 @@ router.put('/:id/write', verifyToken, async (req, res) => {
 });
 
 // PATCH /api/files/:id/rename
-router.patch('/:id/rename', verifyToken, async (req, res) => {
+router.patch('/:id/rename', verifyToken, requireStopped, async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
 
@@ -249,7 +267,7 @@ router.patch('/:id/rename', verifyToken, async (req, res) => {
 });
 
 // DELETE /api/files/:id/delete
-router.delete('/:id/delete', verifyToken, async (req, res) => {
+router.delete('/:id/delete', verifyToken, requireStopped, async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
 
