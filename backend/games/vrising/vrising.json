@@ -1,0 +1,73 @@
+{
+  "id": "vrising",
+  "name": "V Rising",
+  "description": "Vampire survival open-world server",
+  "imageSource": "public",
+  "image": "trueosiris/vrising:latest",
+  "dataMount": "/mnt/vrising",
+  "query": {
+    "type": "a2s",
+    "port": 9877
+  },
+  "ports": [
+    {
+      "host": 9876,
+      "container": 9876,
+      "protocol": "udp"
+    },
+    {
+      "host": 9877,
+      "container": 9877,
+      "protocol": "udp"
+    }
+  ],
+  "environment": [
+    {
+      "key": "SERVERNAME",
+      "value": "Macacos Vampiros",
+      "pinned": true
+    },
+    {
+      "key": "WORLDNAME",
+      "value": "world1",
+      "pinned": false
+    },
+    {
+      "key": "TZ",
+      "value": "UTC",
+      "pinned": false
+    },
+    {
+      "key": "GAMEPORT",
+      "value": "9876",
+      "pinned": false
+    },
+    {
+      "key": "QUERYPORT",
+      "value": "9877",
+      "pinned": false
+    },
+    {
+      "key": "HOST_SETTINGS_Password",
+      "value": "changeme",
+      "pinned": true
+    },
+    {
+      "key": "HOST_SETTINGS_MaxConnectedUsers",
+      "value": "40",
+      "pinned": false
+    },
+    {
+      "key": "GAME_SETTINGS_GameModeType",
+      "value": "PvE",
+      "pinned": false
+    }
+  ],
+  "resources": {
+    "cpuLimit": 2,
+    "memoryLimit": 4096
+  },
+  "rcon": {
+    "enabled": false
+  }
+}

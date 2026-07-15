@@ -14,6 +14,16 @@ import {
 } from './statusBus.js';
 import logger from './logger.js';
 
+// Containers must not inherit the host's DNS server: when the host uses a
+// systemd-resolved / VPN stub (e.g. 127.0.0.53 → 172.17.192.1), Docker copies
+// an address that is unreachable from inside the container, so every external
+// lookup (Mojang, Steam, mod CDNs, image pulls at runtime) times out. Hand each
+// container a public resolver instead. Override via CONTAINER_DNS in .env.
+const CONTAINER_DNS = (process.env.CONTAINER_DNS ?? '1.1.1.1,8.8.8.8')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 function dockerStateToStatus(found) {
   const { State, Status } = found;
   if (State === 'running') return 'running';
@@ -213,6 +223,7 @@ export async function startContainer(game) {
         PortBindings: portBindings,
         Binds: [`${getDataPath(id)}:${game.dataMount ?? '/data'}`],
         RestartPolicy: { Name: 'no' },
+        ...(CONTAINER_DNS.length ? { Dns: CONTAINER_DNS } : {}),
         ...(cpuLimit    ? { NanoCpus: Math.round(cpuLimit * 1e9) }     : {}),
         ...(memoryLimit ? { Memory: memoryLimit * 1024 * 1024 }        : {}),
       },

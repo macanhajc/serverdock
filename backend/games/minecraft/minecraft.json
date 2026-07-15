@@ -21,13 +21,18 @@
     },
     {
       "key": "MEMORY",
-      "value": "4G",
+      "value": "8G",
       "pinned": true
     },
     {
       "key": "MODE",
       "value": "survival",
       "pinned": true
+    },
+    {
+      "key": "ONLINE_MODE",
+      "value": "FALSE",
+      "pinned": false
     }
   ],
   "resources": {
