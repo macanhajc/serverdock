@@ -32,7 +32,7 @@ export function OsInfoCard({ hostOs }: OsInfoCardProps) {
   if (!hostOs) return null;
 
   return (
-    <div className="border border-line bg-bg-1 px-5 py-4 grid grid-cols-4 gap-x-8 gap-y-4">
+    <div className="border border-line bg-bg-1 border-b-0 px-5 py-4 grid grid-cols-4 gap-x-8 gap-y-4">
       <Field label="OS" value={`${hostOs.type} ${hostOs.release}`} />
       <Field label="Architecture" value={hostOs.arch} />
       <Field label="Hostname" value={hostOs.hostname} />

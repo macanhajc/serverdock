@@ -20,6 +20,11 @@ export function toUiStatus(status: ContainerStatus | string): UiStatus {
 // Statuses owned by an in-flight operation — actions stay disabled while one is active
 export const IN_FLIGHT: string[] = ['pulling', 'starting', 'stopping', 'restarting', 'building'];
 
+// Running servers first; stable otherwise so unrelated re-sorts don't reshuffle the list
+export function sortOnlineFirst<T extends { status: ContainerStatus | string }>(servers: T[]): T[] {
+  return [...servers].sort((a, b) => Number(b.status === 'running') - Number(a.status === 'running'));
+}
+
 export function gameHue(id: string): number {
   let h = 0;
   for (const c of id) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
@@ -28,4 +33,18 @@ export function gameHue(id: string): number {
 
 export function gameMark(name: string): string {
   return name.slice(0, 2).toUpperCase();
+}
+
+// Best-effort platform label for a store link's cover badge — falls back to a
+// generic label for anything that isn't Steam/GOG/Epic.
+export function storeLabel(url: string): string {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '');
+    if (host.includes('steampowered.com')) return 'Steam';
+    if (host.includes('gog.com')) return 'GOG';
+    if (host.includes('epicgames.com')) return 'Epic';
+    return 'Store';
+  } catch {
+    return 'Store';
+  }
 }

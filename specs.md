@@ -144,7 +144,7 @@ Access is restricted by VPN at the network level. The app is never exposed to th
 │   │       ├── socketHandlers.js # WebSocket rooms: status, logs, console, build, stats
 │   │       ├── statsStreams.js   # Docker stats stream manager (CPU/mem/net per container)
 │   │       ├── visitorStore.js   # Visitor persistence (visitors.json)
-│   │       └── vpn/              # Tailscale + WireGuard adapters
+│   │       └── vpn/              # NetBird + WireGuard adapters
 │   ├── games/
 │   │   ├── minecraft/
 │   │   │   ├── minecraft.json
@@ -189,7 +189,7 @@ PORT=4000
 JWT_SECRET=changeme
 SERVER_HOST=192.168.1.10
 CORS_ORIGIN=http://192.168.1.10:3000
-VPN_PROVIDER=tailscale        # or 'wireguard'
+VPN_PROVIDER=netbird          # or 'wireguard'
 ```
 
 ### `settings.json` Fields

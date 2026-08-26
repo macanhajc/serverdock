@@ -4,20 +4,49 @@
   "description": "Cooperative sci-fi survival server",
   "imageSource": "public",
   "image": "andrewsav/abiotic-factor:latest",
+  "storeUrl": "https://store.steampowered.com/app/427410/Abiotic_Factor/",
   "dataMount": "/gamefiles",
+  "query": null,
   "ports": [
-    { "host": 7777, "container": 7777, "protocol": "udp" },
-    { "host": 27015, "container": 27015, "protocol": "udp" }
+    {
+      "host": 7777,
+      "container": 7777,
+      "protocol": "udp"
+    },
+    {
+      "host": 27015,
+      "container": 27015,
+      "protocol": "udp"
+    }
   ],
   "environment": [
-    { "key": "SteamServerName", "value": "My Abiotic Factor Server", "pinned": true },
-    { "key": "ServerPassword", "value": "changeme", "pinned": true },
-    { "key": "MaxServerPlayers", "value": "6", "pinned": false },
-    { "key": "AutoUpdate", "value": "true", "pinned": false }
+    {
+      "key": "SteamServerName",
+      "value": "My Abiotic Factor Server",
+      "pinned": true
+    },
+    {
+      "key": "ServerPassword",
+      "value": "changeme",
+      "pinned": true
+    },
+    {
+      "key": "MaxServerPlayers",
+      "value": "6",
+      "pinned": false
+    },
+    {
+      "key": "AutoUpdate",
+      "value": "true",
+      "pinned": false
+    }
   ],
-  "rcon": { "enabled": false },
   "resources": {
     "cpuLimit": 2,
     "memoryLimit": 4096
-  }
+  },
+  "rcon": {
+    "enabled": false
+  },
+  "avatar": "avatar.jpg"
 }

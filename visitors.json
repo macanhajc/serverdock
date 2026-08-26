@@ -1,1 +1,50 @@
-[]
+[
+  {
+    "id": "783c9c9a-35c4-462d-ac3d-b0ba6d96f0c1",
+    "username": "Jacinto_leite_Rego",
+    "token": "54d1f971-613a-4ed2-a32d-f0db43075627",
+    "ip": "::ffff:127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Android 16; Mobile; rv:154.0) Gecko/154.0 Firefox/154.0",
+    "blocked": false,
+    "firstSeen": "2026-08-25T14:47:45.337Z",
+    "lastSeen": "2026-08-25T16:34:05.072Z"
+  },
+  {
+    "id": "3ad86368-0610-4a20-a6ea-21ec64b99f98",
+    "username": "Gaymer",
+    "token": "80518eb8-4b0d-46ab-928f-fece68d579c6",
+    "ip": "::ffff:127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36",
+    "blocked": false,
+    "firstSeen": "2026-08-25T14:50:07.573Z",
+    "lastSeen": "2026-08-25T14:50:55.859Z"
+  },
+  {
+    "id": "85aa091f-845b-4c4a-8672-268b2d24889f",
+    "username": "Alessandre_Pamsexual",
+    "token": "3d603508-a497-449a-94a5-d09fe826bd69",
+    "ip": "::ffff:127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+    "blocked": false,
+    "firstSeen": "2026-08-25T14:55:36.097Z",
+    "lastSeen": "2026-08-25T16:42:44.136Z"
+  },
+  {
+    "id": "90baa67a-39b1-469d-b080-6c6a4bd78bf5",
+    "username": "Alessandro",
+    "token": "755be245-1909-4d82-b95e-3b26568261d4",
+    "ip": "::ffff:127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:154.0) Gecko/20100101 Firefox/154.0",
+    "firstSeen": "2026-08-26T01:01:22.776Z",
+    "lastSeen": "2026-08-26T01:53:36.396Z"
+  },
+  {
+    "id": "fa8cd0e1-fc84-4757-9b05-8be6033b26e1",
+    "username": "Allex",
+    "token": "32e9184d-5ace-40c2-be69-e5dabdcdd75c",
+    "ip": "::ffff:127.0.0.1",
+    "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36",
+    "firstSeen": "2026-08-26T01:37:52.096Z",
+    "lastSeen": "2026-08-26T01:38:55.101Z"
+  }
+]

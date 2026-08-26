@@ -9,7 +9,7 @@ import { Tabs } from '../../../components/navigation/Tabs';
 import { StatusBadge } from '../../../components/core/StatusBadge';
 import { Button } from '../../../components/core/Button';
 import { ConfirmModal } from '../../../components/core/ConfirmModal';
-import { STABLE, IN_FLIGHT, toUiStatus } from '../../../utils/serverStatus';
+import { STABLE, IN_FLIGHT, toUiStatus, gameHue, gameMark, storeLabel } from '../../../utils/serverStatus';
 import { fmtBytes } from '../../../utils/format';
 import type { Server, ServerStats, LogLine, PullProgress } from '../../../types';
 import { InfoTab } from './components/InfoTab';
@@ -328,7 +328,7 @@ export default function ServerDetail() {
       : undefined;
 
   return (
-    <div className="flex container flex-col h-screen">
+    <div className="flex flex-col h-screen">
       {/* ── Detail head ───────────────────────────────────────────────────── */}
       <div className="flex items-center gap-4 py-4 px-6 border-b border-line bg-bg-1 flex-none">
         <button
@@ -337,6 +337,23 @@ export default function ServerDetail() {
         >
           {t('serverDetail.back')}
         </button>
+        {server.avatarUrl ? (
+          <img
+            src={server.avatarUrl}
+            alt=""
+            className="w-10 h-10 shrink-0 border border-line object-cover"
+          />
+        ) : (
+          <div
+            className="w-10 h-10 shrink-0 border border-line grid place-items-center font-mono text-xs font-bold"
+            style={{
+              color: `hsl(${gameHue(id!)} 55% 78%)`,
+              background: `hsl(${gameHue(id!)} 38% 16%)`,
+            }}
+          >
+            {gameMark(name)}
+          </div>
+        )}
         <div className="min-w-0">
           <div className="text-4 font-bold leading-tight">{name}</div>
           <div className="font-mono text-xs text-ink-3 mt-0.5 truncate">

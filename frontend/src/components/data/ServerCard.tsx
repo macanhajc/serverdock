@@ -1,5 +1,6 @@
 import { HTMLAttributes, ReactNode } from 'react';
 import { StatusBadge } from '../core/StatusBadge';
+import { storeLabel } from '../../utils/serverStatus';
 
 interface PinnedEnvItem {
   key: string;
@@ -48,9 +49,12 @@ interface ServerCardProps extends HTMLAttributes<HTMLElement> {
   status?: string;
   players?: ReactNode;
   ip?: ReactNode;
+  lastActive?: ReactNode;
   hue?: number;
   mark?: string;
   source?: string;
+  avatarUrl?: string | null;
+  storeUrl?: string | null;
   pinnedEnv?: PinnedEnvItem[];
   coverActions?: ReactNode;
   actions?: ReactNode;
@@ -64,9 +68,12 @@ export function ServerCard({
   status = 'offline',
   players,
   ip,
+  lastActive,
   hue = 210,
   mark,
   source,
+  avatarUrl,
+  storeUrl,
   pinnedEnv = [],
   coverActions,
   actions,
@@ -89,23 +96,30 @@ export function ServerCard({
           background: `radial-gradient(130% 120% at 12% 0%, hsl(${hue} 38% 16%) 0%, #0c0c0c 62%)`,
         }}
       >
-        <span
-          className="absolute left-4 bottom3 font-mono text-[40px] font-bold tracking-[.04em] opacity-[.92]"
-          style={{ color: `hsl(${hue} 55% 78%)` }}
-        >
-          {mark}
-        </span>
-        {source && (
+        {avatarUrl ? (
+          <img src={avatarUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        ) : (
           <span
-            className="absolute right-3 top-3 font-mono text-xs tracking-widest uppercase px-2 py-0.5"
+            className="absolute left-4 bottom3 font-mono text-[40px] font-bold tracking-[.04em] opacity-[.92]"
+            style={{ color: `hsl(${hue} 55% 78%)` }}
+          >
+            {mark}
+          </span>
+        )}
+        {storeUrl && (
+          <a
+            href={storeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="absolute left-3 top-3 font-mono text-xs tracking-widest uppercase px-2 py-0.5 text-ink-2 hover:text-ink"
             style={{
-              color: `color-mix(in oklab, hsl(${hue} 50% 80%) 70%, var(--ink-3))`,
-              border: `1px solid color-mix(in oklab, hsl(${hue} 50% 60%) 40%, transparent)`,
-              background: 'color-mix(in oklab, #000 35%, transparent)',
+              border: '1px solid var(--line-2)',
+              background: 'color-mix(in oklab, #000 45%, transparent)',
             }}
           >
-            {source}
-          </span>
+            {storeLabel(storeUrl)} ↗
+          </a>
         )}
         {coverActions && (
           <div className="absolute bottom-3 right-3 flex items-center gap-1">{coverActions}</div>
@@ -122,6 +136,10 @@ export function ServerCard({
         <div className="font-mono text-sm text-ink-3 mt-1 whitespace-nowrap text-ellipsis overflow-hidden">
           {engine}
         </div>
+
+        {lastActive && (
+          <div className="font-mono text-[11px] text-ink-3 mt-1">{lastActive}</div>
+        )}
 
         <div className="mt-4 flex justify-between gap-4">
           <Meta k="Players" v={players} />

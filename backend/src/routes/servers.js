@@ -1,9 +1,11 @@
+import { createReadStream } from 'fs';
+import { join, extname, basename } from 'path';
 import { Router } from 'express';
 import { verifyToken } from '../middleware/auth.js';
-import { getGames, getGame } from '../lib/gameLoader.js';
+import { getGames, getGame, GAMES_DIR } from '../lib/gameLoader.js';
 import {
   getEffectiveStatus,
-  getContainerStartedAt,
+  getContainerTimestamps,
   startContainer,
   stopContainer,
   restartContainer,
@@ -26,16 +28,20 @@ async function resolveHost() {
 
 async function buildServerResponse(game, status) {
   const firstPort = game.ports?.[0];
-  const [host, diskUsed, startedAt] = await Promise.all([
+  const [host, diskUsed, { startedAt, lastActiveAt }] = await Promise.all([
     resolveHost(),
     getDirSizeCached(getDataPath(game.id)),
-    getContainerStartedAt(game.id),
+    getContainerTimestamps(game.id),
   ]);
   return {
     id: game.id,
     name: game.name,
     description: game.description ?? null,
     image: game.image,
+    avatarUrl: game.avatar
+      ? `/api/servers/${game.id}/avatar?v=${game.avatarVersion ?? 0}`
+      : null,
+    storeUrl: game.storeUrl ?? null,
     status,
     players: getPlayers(game.id),
     connection: {
@@ -54,6 +60,7 @@ async function buildServerResponse(game, status) {
       .map((e) => ({ key: e.key, value: e.value })),
     diskUsed,
     startedAt,
+    lastActiveAt,
     query: game.query ?? null,
     rcon: game.rcon ? { enabled: !!game.rcon.enabled, port: game.rcon.port ?? null } : null,
   };
@@ -77,6 +84,31 @@ router.get('/:id', async (req, res) => {
   if (!game) return res.status(404).json({ error: 'Game not found' });
   const status = await getEffectiveStatus(game.id);
   res.json(await buildServerResponse(game, status));
+});
+
+const AVATAR_MIME_BY_EXT = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+};
+
+// GET /api/servers/:id/avatar — public (cards render it without a JWT)
+router.get('/:id/avatar', async (req, res) => {
+  const game = getGame(req.params.id);
+  if (!game?.avatar) return res.status(404).end();
+
+  const filePath = join(GAMES_DIR, game.id, basename(game.avatar));
+  const mime = AVATAR_MIME_BY_EXT[extname(filePath).toLowerCase()];
+  res.setHeader('Content-Type', mime ?? 'application/octet-stream');
+  // Safe to cache hard — the URL is versioned via ?v=avatarVersion, so a
+  // replaced avatar gets a new URL instead of invalidating this one.
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+
+  const stream = createReadStream(filePath);
+  stream.on('error', () => res.status(404).end());
+  stream.pipe(res);
 });
 
 // POST /api/servers/:id/start — JWT

@@ -3,7 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { CopyButton } from '../../../../components/core/CopyButton';
 import { UptimeTicker } from '../../../../components/core/UptimeTicker';
 import { copyText } from '../../../../utils/clipboard';
+import { timeAgo } from '../../../../utils/format';
 import type { Server } from '../../../../types';
+import { gameHue, gameMark } from '../../../../utils/serverStatus';
 
 // ─── InfoRow ──────────────────────────────────────────────────────────────────
 
@@ -58,6 +60,15 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
+function fmtWhen(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 // ─── InfoTab ──────────────────────────────────────────────────────────────────
 
 interface InfoTabProps {
@@ -80,6 +91,7 @@ export function InfoTab({ server, id }: InfoTabProps) {
     query,
     rcon,
     startedAt,
+    lastActiveAt,
     status,
   } = server;
 
@@ -93,13 +105,39 @@ export function InfoTab({ server, id }: InfoTabProps) {
           : t('serverDetail.infoNoQuery');
 
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="h-full overflow-y-auto p-6 container">
       <div className="flex flex-col gap-8">
+
+        <div className="w-full h-96 shrink-0 border border-line overflow-hidden grid place-items-center">
+          {server.avatarUrl ? (
+            <img src={server.avatarUrl} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <span
+              className="w-full h-full grid place-items-center font-mono text-[10px] font-bold"
+              style={{
+                color: `hsl(${gameHue(id)} 55% 78%)`,
+                background: `hsl(${gameHue(id)} 38% 16%)`,
+              }}
+            >
+              {gameMark(server.name)}
+            </span>
+          )}
+        </div>
+
         {description && (
           <section>
             <SectionTitle>{t('serverDetail.infoDescription')}</SectionTitle>
             <div className="border border-line bg-bg-1 px-4 py-3">
               <p className="font-mono text-sm text-ink-2 leading-relaxed m-0">{description}</p>
+            </div>
+          </section>
+        )}
+
+        {server.storeUrl && (
+          <section>
+            <SectionTitle>{t('gameForm.fieldStoreUrl')}</SectionTitle>
+            <div className="border border-line bg-bg-1 px-4 py-3">
+              <a href={server.storeUrl} target="_blank" className="underline font-mono text-sm text-ink-2 leading-relaxed m-0">{server.storeUrl}</a>
             </div>
           </section>
         )}
@@ -220,24 +258,30 @@ export function InfoTab({ server, id }: InfoTabProps) {
             </div>
           </section>
 
-          {/* Uptime */}
+          {/* Uptime / Last Active */}
           <section>
-            <SectionTitle>{t('serverDetail.infoUptime')}</SectionTitle>
+            <SectionTitle>
+              {startedAt ? t('serverDetail.infoUptime') : t('serverDetail.infoLastActive')}
+            </SectionTitle>
             <div className="border border-line px-5 py-4 flex items-center gap-3">
-              <span className="font-mono text-2xl font-bold text-ink tabular-nums">
-                {startedAt ? <UptimeTicker startedAt={startedAt} /> : '—'}
-              </span>
-              {startedAt && (
-                <span className="font-mono text-xs text-ink-3">
-                  {t('serverDetail.infoSince', {
-                    when: new Date(startedAt).toLocaleString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    }),
-                  })}
-                </span>
+              {startedAt ? (
+                <>
+                  <span className="font-mono text-2xl font-bold text-ink tabular-nums">
+                    <UptimeTicker startedAt={startedAt} />
+                  </span>
+                  <span className="font-mono text-xs text-ink-3">
+                    {t('serverDetail.infoSince', { when: fmtWhen(startedAt) })}
+                  </span>
+                </>
+              ) : lastActiveAt ? (
+                <>
+                  <span className="font-mono text-2xl font-bold text-ink tabular-nums">
+                    {timeAgo(lastActiveAt, t)}
+                  </span>
+                  <span className="font-mono text-xs text-ink-3">{fmtWhen(lastActiveAt)}</span>
+                </>
+              ) : (
+                <span className="font-mono text-2xl font-bold text-ink tabular-nums">—</span>
               )}
             </div>
           </section>

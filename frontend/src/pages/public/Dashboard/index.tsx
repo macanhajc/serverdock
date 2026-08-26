@@ -3,10 +3,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { io } from 'socket.io-client';
 import { ServerCard } from '../../../components/data/ServerCard';
+import { ServerCardSkeleton } from '../../../components/data/ServerCardSkeleton';
 import { LangSwitcher } from '../../../components/core/LangSwitcher';
 import { CopyButton } from '../../../components/core/CopyButton';
 import { PageHeader } from '../../../components/core/PageHeader';
-import { toUiStatus, gameHue, gameMark } from '../../../utils/serverStatus';
+import { HowToConnectModal } from './components/HowToConnectModal';
+import { toUiStatus, gameHue, gameMark, sortOnlineFirst } from '../../../utils/serverStatus';
+import { timeAgo } from '../../../utils/format';
 import type { Server } from '../../../types';
 
 interface ConnectCellProps {
@@ -35,6 +38,7 @@ export default function PublicDashboard() {
   const [identifying, setIdentifying] = useState(true);
   const [servers, setServers] = useState<Server[]>([]);
   const [search, setSearch] = useState('');
+  const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('sd_visitor_token');
@@ -112,14 +116,11 @@ export default function PublicDashboard() {
     };
   }, [visitor, fetchServers]);
 
-  if (identifying) {
-    return <div className="min-h-screen bg-bg" />;
-  }
-
+  const loading = identifying || servers.length === 0;
   const onlineCount = servers.filter((s) => s.status === 'running').length;
-  const filtered = search
-    ? servers.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()))
-    : servers;
+  const filtered = sortOnlineFirst(
+    search ? servers.filter((s) => s.name.toLowerCase().includes(search.toLowerCase())) : servers
+  );
 
   return (
     <div className="min-h-screen bg-bg">
@@ -162,8 +163,23 @@ export default function PublicDashboard() {
         </div>
       </PageHeader>
 
+      {/* Help banner */}
+      <div
+        className="flex items-center gap-3 px-6 py-3 border-b border-line flex-wrap"
+        style={{ background: 'var(--accent-dim)' }}
+      >
+        <span className="text-accent font-bold text-[15px] shrink-0">ℹ</span>
+        <span className="text-sm text-white">{t('publicDashboard.helpBannerText')}</span>
+        <button
+          onClick={() => setShowHelp(true)}
+          className="ml-auto shrink-0 border px-3.5 py-2 text-xs font-semibold cursor-pointer bg-accent text-white border-accent tracking-[.02em]"
+        >
+          {t('publicDashboard.howToConnect')}
+        </button>
+      </div>
+
       {/* Card grid */}
-      <div className="grid gap-3.5 pt-5 pb-16 px-6 grid-cols-[repeat(auto-fill,minmax(var(--card-min),420px))]">
+      <div className="grid gap-6 pt-8 pb-16 px-6 grid-cols-[repeat(auto-fill,minmax(var(--card-min),1fr))] *:max-w-105">
         {filtered.map((server) => (
           <ServerCard
             key={server.id}
@@ -178,20 +194,27 @@ export default function PublicDashboard() {
             hue={gameHue(server.id)}
             mark={gameMark(server.name)}
             source={server.imageSource === 'local' ? 'Steam' : 'Public'}
+            avatarUrl={server.avatarUrl}
+            storeUrl={server.storeUrl}
             pinnedEnv={server.pinnedEnv ?? []}
+            lastActive={
+              server.status !== 'running' && server.lastActiveAt
+                ? t('publicDashboard.lastActive', { time: timeAgo(server.lastActiveAt, t) })
+                : undefined
+            }
           />
         ))}
 
-        {servers.length === 0 && (
-          <span className="font-mono text-xs text-ink-3">{t('common.loading')}</span>
-        )}
+        {loading && Array.from({ length: 6 }, (_, i) => <ServerCardSkeleton key={i} />)}
 
-        {servers.length > 0 && filtered.length === 0 && (
+        {!loading && filtered.length === 0 && (
           <span className="font-mono text-xs text-ink-3">
             {t('publicDashboard.noMatch', { search })}
           </span>
         )}
       </div>
+
+      {showHelp && <HowToConnectModal onClose={() => setShowHelp(false)} />}
     </div>
   );
 }

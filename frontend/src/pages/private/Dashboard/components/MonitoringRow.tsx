@@ -2,10 +2,9 @@ import { Play, RotateCw, Square, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button, CopyButton, StatusBadge } from "../../../../components";
 import { UptimeTicker } from "../../../../components/core/UptimeTicker";
-import { fmtBytes } from "../../../../utils/format";
-import { toUiStatus, IN_FLIGHT } from "../../../../utils/serverStatus";
+import { fmtBytes, timeAgo, formatDate } from "../../../../utils/format";
+import { toUiStatus, IN_FLIGHT, gameHue, gameMark } from "../../../../utils/serverStatus";
 import { Server, ServerStats, PullProgress } from "../../../../types";
-import { COLS } from "../";
 
 interface MonitoringRowProps {
   server: Server;
@@ -49,63 +48,89 @@ export function MonitoringRow({
   }
 
   return (
-    <div
-      className="group grid border-b border-line hover:bg-bg-2 last:border-none cursor-pointer transition-colors"
-      style={{ gridTemplateColumns: COLS, width: 'fit-content' }}
+    <tr
+      className="group border-b border-line hover:bg-bg-2 last:border-none cursor-pointer transition-colors"
       onClick={() => navigate(`/admin/servers/${id}`)}
     >
-      <div className="flex flex-col items-start border-r border-line gap-1 px-5 py-3.5 sticky left-0 z-10 bg-bg-1 group-hover:bg-bg-2 transition-colors">
-        <span className="font-bold text-sm text-ink whitespace-nowrap">{name}</span>
-        <span className="font-mono text-xs text-ink-3 whitespace-nowrap">{id}</span>
-      </div>
+      <td className="border-r border-line px-5 py-3.5 sticky left-0 z-10 bg-bg-1 group-hover:bg-bg-2 transition-colors">
+        <div className="flex items-center gap-4">
+          <div className="w-8 h-8 shrink-0 border border-line overflow-hidden grid place-items-center">
+            {server.avatarUrl ? (
+              <img src={server.avatarUrl} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <span
+                className="w-full h-full grid place-items-center font-mono text-[10px] font-bold"
+                style={{
+                  color: `hsl(${gameHue(id)} 55% 78%)`,
+                  background: `hsl(${gameHue(id)} 38% 16%)`,
+                }}
+              >
+                {gameMark(name)}
+              </span>
+            )}
+          </div>
+          <div className="flex flex-col items-start gap-1 min-w-0">
+            <span className="font-bold text-sm text-ink whitespace-nowrap text-ellipsis overflow-hidden max-w-full">
+              {name}
+            </span>
+            <span className="font-mono text-xs text-ink-3 whitespace-nowrap text-ellipsis overflow-hidden max-w-full">
+              {id}
+            </span>
+          </div>
+        </div>
+      </td>
 
-      <div className="flex items-center border-r border-line px-4 py-3.5">
+      <td className="border-r border-line px-4 py-3.5">
         <StatusBadge status={toUiStatus(status)}>{badgeLabel}</StatusBadge>
-      </div>
+      </td>
 
-      <div className="flex items-center border-r border-line px-4 py-3.5">
+      <td className="border-r border-line px-4 py-3.5">
         {isRunning && server.startedAt ? (
           <span className="font-mono text-xs text-ink whitespace-nowrap">
             <UptimeTicker startedAt={server.startedAt} />
           </span>
+        ) : server.lastActiveAt ? (
+          <span
+            className="font-mono text-xs text-ink-3 whitespace-nowrap"
+            title={formatDate(server.lastActiveAt)}
+          >
+            {timeAgo(server.lastActiveAt, t)}
+          </span>
         ) : (
           <span className="font-mono text-xs text-ink-3">—</span>
         )}
-      </div>
+      </td>
 
-      <div className="flex items-center border-r border-line px-4 py-3.5">
+      <td className="border-r border-line px-4 py-3.5">
         {server.players !== null && server.players !== undefined ? (
           <span className="font-mono text-xs text-ink">{server.players}</span>
         ) : (
           <span className="font-mono text-xs text-ink-3">—</span>
         )}
-      </div>
+      </td>
 
-      <div className="flex items-center border-r border-line gap-2.5 px-4 py-3.5">
+      <td className="border-r border-line px-4 py-3.5">
         {isRunning && stats ? (
-          <span className="font-mono text-xs text-ink shrink-0" style={{ minWidth: '7rem' }}>
+          <span className="font-mono text-xs text-ink whitespace-nowrap">
             {stats.cpu.toFixed(1)}%
           </span>
         ) : (
           <span className="font-mono text-xs text-ink-3">—</span>
         )}
-      </div>
+      </td>
 
-      <div className="flex items-center border-r border-line gap-2.5 px-4 py-3.5">
+      <td className="border-r border-line px-4 py-3.5">
         {isRunning && stats ? (
-          <span
-            className="font-mono text-xs text-ink shrink-0 whitespace-nowrap text-ellipsis overflow-hidden"
-            style={{ minWidth: '8rem' }}
-          >
+          <span className="font-mono text-xs text-ink whitespace-nowrap text-ellipsis overflow-hidden block max-w-full">
             {fmtBytes(stats.memUsed)}
             {memMax ? ` / ${fmtBytes(memMax)}` : ' / - '}
           </span>
         ) : (
           <span className="font-mono text-xs text-ink-3">—</span>
         )}
-      </div>
+      </td>
 
-      <div className="flex items-center border-r border-line px-4 py-3.5">
+      <td className="border-r border-line px-4 py-3.5">
         {server.diskUsed != null ? (
           <span className="font-mono text-xs text-ink whitespace-nowrap text-ellipsis overflow-hidden">
             {fmtBytes(server.diskUsed)}
@@ -113,11 +138,11 @@ export function MonitoringRow({
         ) : (
           <span className="font-mono text-xs text-ink-3">—</span>
         )}
-      </div>
+      </td>
 
-      <div className="flex items-center border-r border-line gap-3 px-4 py-3.5">
+      <td className="border-r border-line px-4 py-3.5">
         {isRunning && stats ? (
-          <span className="font-mono text-xs text-ink-3 whitespace-nowrap text-ellipsis overflow-hidden">
+          <span className="font-mono text-xs text-ink-3 whitespace-nowrap text-ellipsis overflow-hidden block max-w-full">
             ↓ <span className="text-ink">{fmtBytes(stats.netInRate)}/s</span>
             <span className="mx-2 text-line-2">·</span>↑{' '}
             <span className="text-ink">{fmtBytes(stats.netOutRate)}/s</span>
@@ -125,69 +150,71 @@ export function MonitoringRow({
         ) : (
           <span className="font-mono text-xs text-ink-3">—</span>
         )}
-      </div>
+      </td>
 
-      <div className="flex items-center gap-2 border-r border-line px-4 py-3.5">
+      <td className="border-r border-line px-4 py-3.5">
         {server.connection ? (
-          <>
-            <span className="font-mono text-xs text-ink">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-mono text-xs text-ink whitespace-nowrap text-ellipsis overflow-hidden min-w-0">
               {server.connection.host}:{server.connection.port}
             </span>
             <CopyButton
               text={`${server.connection.host}:${server.connection.port}`}
-              className="opacity-0 group-hover:opacity-100 transition-opacity"
+              className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
             />
-          </>
+          </div>
         ) : (
           <span className="font-mono text-xs text-ink-3">—</span>
         )}
-      </div>
+      </td>
 
-      <div className="flex items-center gap-1 px-3 py-3.5">
-        <Button
-          size="sm"
-          variant="primary"
-          className="p-1.5"
-          disabled={!isNotCreated || busy}
-          title={t('adminDashboard.actStart')}
-          aria-label={t('adminDashboard.actStart')}
-          onClick={(e) => act(e, onStart)}
-        >
-          <Play size={12} />
-        </Button>
-        <Button
-          size="sm"
-          variant="danger"
-          className="p-1.5"
-          disabled={!isRunning || busy}
-          title={t('adminDashboard.actStop')}
-          aria-label={t('adminDashboard.actStop')}
-          onClick={(e) => act(e, onStop)}
-        >
-          <Square size={12} />
-        </Button>
-        <Button
-          size="sm"
-          className="p-1.5"
-          disabled={!isRunning || busy}
-          title={t('adminDashboard.actRestart')}
-          aria-label={t('adminDashboard.actRestart')}
-          onClick={(e) => act(e, onRestart)}
-        >
-          <RotateCw size={12} />
-        </Button>
-        <Button
-          size="sm"
-          variant="danger"
-          className="p-1.5"
-          disabled={busy}
-          title={t('adminDashboard.actReset')}
-          aria-label={t('adminDashboard.actReset')}
-          onClick={(e) => act(e, onWipe)}
-        >
-          <Trash2 size={12} />
-        </Button>
-      </div>
-    </div>
+      <td className="px-3 py-3.5">
+        <div className="flex items-center gap-1">
+          <Button
+            size="sm"
+            variant="primary"
+            className="p-1.5"
+            disabled={!isNotCreated || busy}
+            title={t('adminDashboard.actStart')}
+            aria-label={t('adminDashboard.actStart')}
+            onClick={(e) => act(e, onStart)}
+          >
+            <Play size={12} />
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            className="p-1.5"
+            disabled={!isRunning || busy}
+            title={t('adminDashboard.actStop')}
+            aria-label={t('adminDashboard.actStop')}
+            onClick={(e) => act(e, onStop)}
+          >
+            <Square size={12} />
+          </Button>
+          <Button
+            size="sm"
+            className="p-1.5"
+            disabled={!isRunning || busy}
+            title={t('adminDashboard.actRestart')}
+            aria-label={t('adminDashboard.actRestart')}
+            onClick={(e) => act(e, onRestart)}
+          >
+            <RotateCw size={12} />
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            className="p-1.5"
+            disabled={busy}
+            title={t('adminDashboard.actReset')}
+            aria-label={t('adminDashboard.actReset')}
+            onClick={(e) => act(e, onWipe)}
+          >
+            <Trash2 size={12} />
+          </Button>
+        </div>
+      </td>
+    </tr>
   );
 }

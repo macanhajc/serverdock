@@ -8,8 +8,8 @@ import {
   createVisitor,
   updateVisitor,
   removeVisitor,
-  isIpBlocked,
 } from '../lib/visitorStore.js';
+import { isIpBlocked, blockIp, unblockIp, getBlockedIps } from '../lib/blocklistStore.js';
 import { getSettings } from '../lib/settingsStore.js';
 
 const router = Router();
@@ -63,24 +63,41 @@ router.post('/identify', async (req, res) => {
 
 // GET /api/visitors — admin only
 router.get('/', verifyToken, (_req, res) => {
-  res.json(getVisitors());
+  res.json(getVisitors().map((v) => ({ ...v, blocked: isIpBlocked(v.ip) })));
+});
+
+// GET /api/visitors/blocklist — admin only. Lists blocked IPs directly, since
+// an IP can stay blocked after the visitor row that set it has been removed.
+router.get('/blocklist', verifyToken, (_req, res) => {
+  res.json(getBlockedIps());
+});
+
+// DELETE /api/visitors/blocklist/:ip — admin only, unblock an IP directly
+// (needed for IPs blocked from a visitor row that no longer exists).
+router.delete('/blocklist/:ip', verifyToken, async (req, res) => {
+  const removed = await unblockIp(decodeURIComponent(req.params.ip));
+  if (!removed) return res.status(404).json({ error: 'IP not in blocklist' });
+  res.json({ ok: true });
 });
 
 // PATCH /api/visitors/:id/block — admin only
 router.patch('/:id/block', verifyToken, async (req, res) => {
-  if (!getById(req.params.id)) return res.status(404).json({ error: 'Visitor not found' });
-  await updateVisitor(req.params.id, { blocked: true });
+  const visitor = getById(req.params.id);
+  if (!visitor) return res.status(404).json({ error: 'Visitor not found' });
+  await blockIp(visitor.ip);
   res.json({ ok: true });
 });
 
 // PATCH /api/visitors/:id/unblock — admin only
 router.patch('/:id/unblock', verifyToken, async (req, res) => {
-  if (!getById(req.params.id)) return res.status(404).json({ error: 'Visitor not found' });
-  await updateVisitor(req.params.id, { blocked: false });
+  const visitor = getById(req.params.id);
+  if (!visitor) return res.status(404).json({ error: 'Visitor not found' });
+  await unblockIp(visitor.ip);
   res.json({ ok: true });
 });
 
-// DELETE /api/visitors/:id — admin only
+// DELETE /api/visitors/:id — admin only. Only removes the visitor row — any
+// IP block set from it is untouched (see blocklistStore.js).
 router.delete('/:id', verifyToken, async (req, res) => {
   const removed = await removeVisitor(req.params.id);
   if (!removed) return res.status(404).json({ error: 'Visitor not found' });

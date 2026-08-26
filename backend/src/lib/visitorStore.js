@@ -51,11 +51,6 @@ export function getById(id) {
   return visitors.find((v) => v.id === id) ?? null;
 }
 
-export function isIpBlocked(ip) {
-  if (!ip) return false;
-  return visitors.some((v) => v.blocked === true && v.ip === ip);
-}
-
 export async function createVisitor({ username, ip, userAgent }) {
   const now = new Date().toISOString();
   const visitor = {
@@ -64,7 +59,6 @@ export async function createVisitor({ username, ip, userAgent }) {
     token: randomUUID(),
     ip,
     userAgent: userAgent ?? '',
-    blocked: false,
     firstSeen: now,
     lastSeen: now,
   };

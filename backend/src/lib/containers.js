@@ -162,14 +162,28 @@ export async function getContainerExitInfo(id) {
   }
 }
 
-export async function getContainerStartedAt(id) {
+// Docker's zero-value time for a field that was never set (e.g. FinishedAt on
+// a container that has never exited).
+const ZERO_TIME = '0001-01-01T00:00:00Z';
+
+// startedAt: only set while running (drives the live uptime ticker).
+// lastActiveAt: when the container last stopped running — Docker keeps this on
+// the container itself (State.FinishedAt) until it's removed via reset, so no
+// extra persistence is needed to show "last active" for a stopped server.
+export async function getContainerTimestamps(id) {
   try {
     const found = await findContainer(id);
-    if (!found || found.State !== 'running') return null;
+    if (!found) return { startedAt: null, lastActiveAt: null };
     const info = await docker.getContainer(found.Id).inspect();
-    return info.State?.StartedAt ?? null;
+    const state = info.State ?? {};
+    const startedAt = state.Running ? state.StartedAt ?? null : null;
+    const lastActiveAt =
+      !state.Running && state.FinishedAt && state.FinishedAt !== ZERO_TIME
+        ? state.FinishedAt
+        : null;
+    return { startedAt, lastActiveAt };
   } catch {
-    return null;
+    return { startedAt: null, lastActiveAt: null };
   }
 }
 

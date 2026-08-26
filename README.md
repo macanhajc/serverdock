@@ -34,7 +34,7 @@ Self-hosted game server manager. Admins control Docker game containers via a log
 - **A2S player count** — live player/max-player display for games that support the Valve Source Engine Query protocol (Valheim, CS2, ARK, Rust); configured via the `query` field in each game's JSON
 - **Pinned env vars** — mark any environment variable as pinned to surface its current value on the server card in both the admin and public dashboards
 - **Resource limits** — optional `cpuLimit` and `memoryLimit` fields in game JSON; limits shown alongside live usage in the dashboard and detail view
-- **VPN integration** — Tailscale and WireGuard support; VPN IP is auto-detected and shown to friends as the connection address
+- **VPN integration** — NetBird and WireGuard support; VPN IP is auto-detected and shown to friends as the connection address
 - **Visitor tracking** — friends register a username on the public dashboard; admin can see who has visited and remove access
 - **Settings panel** — admin can update `SERVER_HOST`, data root path, and toggle visitor self-registration without editing `.env`
 - **Discord notifications** — crash alerts posted to a Discord channel via webhook; configurable in the settings panel
@@ -55,7 +55,7 @@ Self-hosted game server manager. Admins control Docker game containers via a log
 | Real-time | `socket.io` (same port as backend) |
 | Auth | JWT (24 h) + bcrypt |
 | Game config | JSON files in `backend/games/<id>/` |
-| VPN | Tailscale (default) or WireGuard |
+| VPN | NetBird (default) or WireGuard |
 | Notifications | Web Push (VAPID) + Discord webhooks |
 
 ---
@@ -64,7 +64,7 @@ Self-hosted game server manager. Admins control Docker game containers via a log
 
 - **Node.js 18+** (tested on 24 LTS)
 - **Docker Engine** — the user running the backend must have access to `/var/run/docker.sock`
-- **Tailscale** (or WireGuard) for VPN-gated friend access — optional, but required for friends to connect
+- **NetBird** (or WireGuard) for VPN-gated friend access — optional, but required for friends to connect
 
 ```bash
 # Add your user to the docker group so the backend can reach the socket
@@ -97,7 +97,7 @@ PORT=4000
 JWT_SECRET=<generate a strong random secret>
 SERVER_HOST=192.168.1.10      # fallback IP shown to friends if VPN is not active
 CORS_ORIGIN=http://192.168.1.10:3000
-VPN_PROVIDER=tailscale        # or 'wireguard'
+VPN_PROVIDER=netbird          # or 'wireguard'
 ```
 
 Generate a secret:
@@ -206,7 +206,7 @@ serverdock/
 │   │       ├── socketHandlers.js  # WebSocket rooms (logs, build, stats, console, status)
 │   │       ├── statsStreams.js     # Docker stats stream manager (CPU/mem/net)
 │   │       ├── visitorStore.js    # Visitor persistence (visitors.json)
-│   │       └── vpn/               # Tailscale + WireGuard adapters
+│   │       └── vpn/               # NetBird + WireGuard adapters
 │   ├── games/                     # One subfolder per game
 │   │   └── <id>/
 │   │       ├── <id>.json          # Game definition (image, ports, env vars, schedules)

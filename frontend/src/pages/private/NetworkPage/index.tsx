@@ -3,18 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../../context/AuthContext';
 import { PageHeader } from '../../../components/core/PageHeader';
 import { CopyButton } from '../../../components/core/CopyButton';
+import { timeAgo } from '../../../utils/format';
 import type { VpnStatus, VpnSelf, VpnPeer } from '../../../types';
 import { StatusDot } from './components/StatusDot';
-
-function formatLastSeen(iso: string | undefined, t: (key: string, opts?: Record<string, unknown>) => string): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  const diff = Date.now() - d.getTime();
-  if (diff < 60_000) return t('network.justNow');
-  if (diff < 3_600_000) return t('network.mAgo', { count: Math.floor(diff / 60_000) });
-  if (diff < 86_400_000) return t('network.hAgo', { count: Math.floor(diff / 3_600_000) });
-  return d.toLocaleDateString();
-}
+import { SelfCardSkeleton } from './components/SelfCardSkeleton';
+import { PeerRowSkeleton } from './components/PeerRowSkeleton';
 
 export default function NetworkPage() {
   const { t } = useTranslation();
@@ -48,7 +41,7 @@ export default function NetworkPage() {
   const self: VpnSelf | null = status?.self ?? null;
   const peers: VpnPeer[] = status?.peers ?? [];
   const online = peers.filter((p) => p.online).length;
-  const provider = status?.provider ?? 'tailscale';
+  const provider = status?.provider ?? 'netbird';
 
   return (
     <>
@@ -64,17 +57,13 @@ export default function NetworkPage() {
         </button>
       </PageHeader>
 
-      <div className="px-6 py-5 flex flex-col gap-6">
+      <div className="px-6 py-5 flex flex-col gap-6 container">
         {/* This server */}
         <section>
           <h2 className="m-0 mb-3 text-sm font-semibold tracking-[.02em] text-ink-2 uppercase font-mono">
             {t('network.thisServer')}
           </h2>
-          {!loaded && (
-            <div className="border border-line bg-bg-1 px-4 py-3 font-mono text-xs text-ink-3 animate-pulse">
-              {t('common.loading')}
-            </div>
-          )}
+          {!loaded && <SelfCardSkeleton />}
           {loaded && error && (
             <div
               className="border px-4 py-3 font-mono text-xs text-red"
@@ -83,13 +72,13 @@ export default function NetworkPage() {
                 borderColor: 'color-mix(in oklab, var(--red) 35%, transparent)',
               }}
             >
-              {error} — {t('network.tailscaleCheck')}
+              {error} — {t('network.vpnCheck')}
             </div>
           )}
           {loaded && !error && !self && (
             <div className="border border-line bg-bg-1 px-4 py-3 font-mono text-xs text-ink-3">
-              {t('network.tailscaleInactive')} <code className="text-ink">sudo tailscale up</code>{' '}
-              {t('network.tailscaleInactiveSuffix')}
+              {t('network.vpnInactive')} <code className="text-ink">sudo netbird up</code>{' '}
+              {t('network.vpnInactiveSuffix')}
             </div>
           )}
           {loaded && self && (
@@ -129,18 +118,31 @@ export default function NetworkPage() {
             {t('network.peers')}
           </h2>
 
+          {!loaded && (
+            <div className="border border-line bg-bg-1 overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b bg-bg-2 border-line">
+                    <Th>{t('network.colDevice')}</Th>
+                    <Th>{t('network.colIp')}</Th>
+                    <Th>{t('network.colOs')}</Th>
+                    <Th>{t('network.colStatus')}</Th>
+                    <Th last>{t('network.colLastSeen')}</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[1, 2, 3].map((i) => (
+                    <PeerRowSkeleton key={i} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {loaded && peers.length === 0 && !error && (
             <div className="border border-line bg-bg-1 px-4 py-3 font-mono text-xs text-ink-3">
               {t('network.noPeers')}{' '}
-              <a
-                href="https://login.tailscale.com/admin/invite"
-                target="_blank"
-                rel="noreferrer"
-                className="text-ink underline"
-              >
-                tailscale.com/admin/invite
-              </a>
-              .
+              <span className="text-ink">{t('network.vpnDashboard')}</span>.
             </div>
           )}
 
@@ -148,49 +150,36 @@ export default function NetworkPage() {
             <div className="border border-line bg-bg-1 overflow-x-auto">
               <table className="w-full border-collapse text-sm">
                 <thead>
-                  <tr className="border-b border-line">
-                    <th className="text-left px-4 py-3 font-mono text-xs text-ink-3 uppercase tracking-[.08em] whitespace-nowrap">
-                      {t('network.colDevice')}
-                    </th>
-                    <th className="text-left px-4 py-3 font-mono text-xs text-ink-3 uppercase tracking-[.08em] whitespace-nowrap">
-                      {t('network.colIp')}
-                    </th>
-                    <th className="text-left px-4 py-3 font-mono text-xs text-ink-3 uppercase tracking-[.08em] whitespace-nowrap">
-                      {t('network.colOs')}
-                    </th>
-                    <th className="text-left px-4 py-3 font-mono text-xs text-ink-3 uppercase tracking-[.08em] whitespace-nowrap">
-                      {t('network.colStatus')}
-                    </th>
-                    <th className="text-left px-4 py-3 font-mono text-xs text-ink-3 uppercase tracking-[.08em] whitespace-nowrap">
-                      {t('network.colLastSeen')}
-                    </th>
+                  <tr className="border-b bg-bg-2 border-line">
+                    <Th>{t('network.colDevice')}</Th>
+                    <Th>{t('network.colIp')}</Th>
+                    <Th>{t('network.colOs')}</Th>
+                    <Th>{t('network.colStatus')}</Th>
+                    <Th last>{t('network.colLastSeen')}</Th>
                   </tr>
                 </thead>
                 <tbody>
-                  {peers.map((p, i) => (
+                  {peers.filter(p =>  !p.name.includes("proxy")).map((p, i) => (
                     <tr
                       key={p.id}
                       className={`border-b border-line last:border-0 ${i % 2 === 1 ? 'bg-bg-2' : ''}`}
                     >
-                      <td className="px-4 py-3">
+                      <Td>
                         <div className="flex items-center gap-2">
                           <StatusDot online={p.online} />
                           <span className="font-mono text-sm text-ink">{p.name}</span>
                         </div>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-ink-2">{p.ip ?? '—'}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-ink-3 capitalize">
+                      </Td>
+                      <Td mono>{p.ip ?? '—'}</Td>
+                      <Td mono className="capitalize">
                         {p.os ?? '—'}
-                      </td>
-                      <td
-                        className="px-4 py-3 font-mono text-xs"
-                        style={{ color: p.online ? 'var(--green)' : 'var(--ink-3)' }}
-                      >
+                      </Td>
+                      <Td mono style={{ color: p.online ? 'var(--green)' : 'var(--ink-3)' }}>
                         {p.online ? t('network.online') : t('network.offline')}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-ink-3 whitespace-nowrap">
-                        {p.online ? '—' : formatLastSeen(p.lastSeen, t)}
-                      </td>
+                      </Td>
+                      <Td mono last className="whitespace-nowrap">
+                        {p.online ? '—' : timeAgo(p.lastSeen, t)}
+                      </Td>
                     </tr>
                   ))}
                 </tbody>
@@ -205,35 +194,55 @@ export default function NetworkPage() {
             {t('network.howToInvite')}
           </h2>
           <div className="border border-line bg-bg-1 px-4 py-4 flex flex-col gap-3 font-mono text-xs text-ink-2">
-            <p className="m-0">
-              {t('network.step1pre')}{' '}
-              <a
-                href="https://login.tailscale.com/admin/invite"
-                target="_blank"
-                rel="noreferrer"
-                className="text-ink underline"
-              >
-                tailscale.com/admin/invite
-              </a>{' '}
-              {t('network.step1post')}
-            </p>
+            <p className="m-0 text-ink-3">{t('network.sharedAccountNote')}</p>
+            <p className="m-0">{t('network.step1')}</p>
             <p className="m-0">{t('network.step2')}</p>
             <p className="m-0">{t('network.step3')}</p>
             <p className="m-0 text-ink-3">
               {t('network.removeAccess')}{' '}
-              <a
-                href="https://login.tailscale.com/admin/machines"
-                target="_blank"
-                rel="noreferrer"
-                className="text-ink-2 underline"
-              >
-                tailscale.com/admin/machines
-              </a>{' '}
+              <span className="text-ink-2">{t('network.vpnDashboard')}</span>{' '}
               {t('network.removeAccessPost')}
             </p>
           </div>
         </section>
       </div>
     </>
+  );
+}
+
+function Th({ children, last }: { children: React.ReactNode; last?: boolean }) {
+  return (
+    <th
+      className={`text-left px-4 py-3 font-mono text-[11px] text-ink-3 uppercase tracking-wider whitespace-nowrap ${
+        last ? '' : 'border-r border-line'
+      }`}
+    >
+      {children}
+    </th>
+  );
+}
+
+function Td({
+  children,
+  mono,
+  last,
+  className,
+  style,
+}: {
+  children: React.ReactNode;
+  mono?: boolean;
+  last?: boolean;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <td
+      className={`px-4 py-3 text-xs ${last ? '' : 'border-r border-line'} ${
+        mono ? 'font-mono text-ink-2' : 'text-ink-3'
+      } ${className ?? ''}`}
+      style={style}
+    >
+      {children}
+    </td>
   );
 }

@@ -5,7 +5,7 @@
   "imageSource": "public",
   "image": "kagurazakanyaa/soulmask",
   "dataMount": "/data",
-  "query": null,
+  "query": { "type": "a2s", "port": 27015 },
   "ports": [
     {
       "host": 8777,

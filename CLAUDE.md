@@ -27,6 +27,7 @@ Self-hosted game server manager. Admin controls Docker game containers via a log
 │   ├── games/                               ← one subfolder per game
 │   │   └── <id>/
 │   │       ├── <id>.json                    ← game definition
+│   │       ├── avatar.<ext>                 ← optional cover image, set via the game edit form
 │   │       ├── data/                        ← game server data (world saves, configs)
 │   │       └── Dockerfile                   ← Steam/custom games only
 │   ├── auth.json                            ← bcrypt-hashed admin credentials
@@ -67,6 +68,7 @@ cd backend && node setup-auth.js --username admin --password yourpassword
 - **`RestartPolicy: { Name: "no" }`** on all containers. Admin controls start/stop. No auto-start on machine reboot.
 - **RCON / player management is deferred.** The `players` field always returns `null` for now.
 - **No HTTPS.** VPN tunnel handles encryption. Plain HTTP is fine.
+- **Cover image (`avatar`) and `storeUrl` (Steam/GOG/Epic link) live in `<id>.json`**, alongside the game definition — not in `data/`. They're uploaded/edited from the game form and never require the container to be stopped, since they don't touch the data volume Docker has mounted.
 
 ---
 
@@ -75,12 +77,13 @@ cd backend && node setup-auth.js --username admin --password yourpassword
 **Public endpoints (no JWT needed):**
 - `GET /api/servers`
 - `GET /api/servers/:id`
+- `GET /api/servers/:id/avatar` — streams the game's cover image (404 if none set); public so cards render it without a JWT
 - `POST /api/auth/login`
 - `GET /api/health`
 - WebSocket `join:status` room
 
 **Protected endpoints (require `Authorization: Bearer <token>`):**
-- All `/api/games/*`
+- All `/api/games/*` (includes `POST /api/games/:id/avatar` and `DELETE /api/games/:id/avatar` — cover image upload/removal)
 - All `/api/files/*`
 - `POST /api/servers/:id/start|stop|restart|reset`
 - `POST /api/auth/logout`

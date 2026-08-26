@@ -5,16 +5,13 @@ import { useToast } from '../../../context/ToastContext';
 import socket from '../../../socket';
 import { ConfirmModal } from '../../../components/core/ConfirmModal';
 import { PageHeader } from '../../../components/core/PageHeader';
-import { STABLE } from '../../../utils/serverStatus';
-import type { Server, ServerStats, HostDisk, PullProgress } from '../../../types';
+import { STABLE, sortOnlineFirst } from '../../../utils/serverStatus';
+import type { Server, ServerStats, HostDisk, PullProgress, VpnStatus } from '../../../types';
 import { GlobalStatsCard } from './components/GlobalStatsCard';
 import { OsInfoCard } from './components/OsInfoCard';
 import { MonitoringRowSkeleton } from './components/MonitoringRowSkeleton';
 import { MonitoringRow } from './components/MonitoringRow';
 import { Button } from '../../../components';
-
-export const COLS =
-  'minmax(220px, 1fr) 120px 80px 100px 100px 180px 110px 220px 200px minmax(185px, 1fr)';
 
 interface DashboardMainProps {
   navigate: (path: string) => void;
@@ -42,6 +39,7 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
     hostname: string;
     uptime: number;
   } | null>(null);
+  const [usersOnline, setUsersOnline] = useState(0);
   const subscribedIds = useRef(new Set<string>());
 
   function loadServers() {
@@ -195,6 +193,23 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
     };
   }, []);
 
+  // "Players online" is the count of Netbird peers currently connected to the
+  // VPN — the only always-available presence signal (per-game A2S player
+  // counts only exist for a handful of Steam/Source titles).
+  useEffect(() => {
+    function fetchVpnStatus() {
+      fetch('/api/vpn/status', { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((data: VpnStatus) => {
+          setUsersOnline(data.peers.filter((p) => p.online && !p.name.includes("proxy")).length);
+        })
+        .catch(() => {});
+    }
+    fetchVpnStatus();
+    const interval = setInterval(fetchVpnStatus, 30_000);
+    return () => clearInterval(interval);
+  }, [token]);
+
   useEffect(() => {
     const runningIds = new Set(servers.filter((s) => s.status === 'running').map((s) => s.id));
 
@@ -260,7 +275,7 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
         subtitle={t('adminDashboard.subtitle', { count: servers.length, online: onlineCount })}
       />
 
-      <div className="mx-6 mt-6">
+      <div className="px-6 mt-6 container">
         <div className="mb-2">
           <span className="text-base text-ink-2 uppercase font-mono">
             {t('serverDetail.infoSectionResources')}
@@ -279,95 +294,132 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
         />
       </div>
 
-      <div className="border-t border-line mx-6 my-6" />
+      <div className="border-t border-line mx-6 my-6 container" />
 
-      <div className="mx-6 pb-16">
+      <div className="px-6 pb-16 container overflow-hidden">
         <div className="mb-2">
           <span className="text-base text-ink-2 uppercase font-mono">{t('servers.title')}</span>
         </div>
 
         <div className="flex flex-row justify-between items-center border border-line bg-bg-1 px-5 py-4 mb-6">
-          <div>
-            <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
-              {t('adminDashboard.serversCardLabel')}
+          <div className="flex flex-1 items-center gap-8">
+            <div className='flex flex-col flex-1'>
+              <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+                {t('adminDashboard.serversCardLabel')}
+              </div>
+              <div className="flex flex-1 items-baseline gap-2">
+                <span className="text-[26px] font-bold tabular-nums leading-none">{onlineCount}</span>
+                <span className="font-mono text-sm text-ink-3">
+                  {t('adminDashboard.onlineOfTotal', { total: totalCount })}
+                </span>
+              </div>
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-[26px] font-bold tabular-nums leading-none">{onlineCount}</span>
-              <span className="font-mono text-sm text-ink-3">
-                {t('adminDashboard.onlineOfTotal', { total: totalCount })}
-              </span>
+
+            <div className="border-l border-line pl-8">
+              <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+                {t('adminDashboard.playersCardLabel')}
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-[26px] font-bold tabular-nums leading-none">{usersOnline}</span>
+                <span className="font-mono text-sm text-ink-3">
+                  {t('adminDashboard.playersOnline')}
+                </span>
+              </div>
             </div>
           </div>
 
-          <Button variant='primary' onClick={() => navigate('/admin/servers/new')}>
-            {t("adminDashboard.addGame")}
-          </Button>
+          <div className='flex flex-1 justify-end'>
+            <Button variant='primary' onClick={() => navigate('/admin/servers/new')}>
+              {t("adminDashboard.addGame")}
+            </Button>
+          </div>
         </div>
 
-        <div
-          className="border border-line bg-bg-1 overflow-x-auto"
-        >
-          <div
-            className="grid border-b border-line-2 bg-bg-2 sticky top-0 z-20"
-            style={{ gridTemplateColumns: COLS, width: 'fit-content' }}
+        <div className="border border-line bg-bg-1 overflow-x-auto">
+          <table
+            className="border-collapse text-left"
+            style={{ tableLayout: 'fixed', width: '100%', minWidth: 1590 }}
           >
-            {[
-              t('adminDashboard.colServer'),
-              t('adminDashboard.colStatus'),
-              t('adminDashboard.colUptime'),
-              t('adminDashboard.colPlayers'),
-              t('adminDashboard.colCpu'),
-              t('adminDashboard.colRam'),
-              t('adminDashboard.colDisk'),
-              t('adminDashboard.colNetwork'),
-              t('adminDashboard.colConnect'),
-              t('adminDashboard.colActions'),
-            ].map((col, i) => (
-              <div
-                key={col}
-                className={`px-4 py-2.5 border-r border-line font-mono text-[11px] last:border-none text-ink-3 uppercase tracking-wider${
-                  i === 0 ? ' sticky left-0 z-20 bg-bg-2' : ''
-                }`}
-              >
-                {col}
-              </div>
-            ))}
-          </div>
+            <colgroup>
+              <col style={{ width: 220 }} />
+              <col style={{ width: 100 }} />
+              <col style={{ width: 140 }} />
+              <col style={{ width: 100 }} />
+              <col style={{ width: 100 }} />
+              <col style={{ width: 180 }} />
+              <col style={{ width: 110 }} />
+              <col style={{ width: 230 }} />
+              <col style={{ width: 220 }} />
+              <col style={{ width: 190 }} />
+            </colgroup>
+            <thead>
+              <tr className="bg-bg-2">
+                {[
+                  t('adminDashboard.colServer'),
+                  t('adminDashboard.colStatus'),
+                  t('adminDashboard.colUptime'),
+                  t('adminDashboard.colPlayers'),
+                  t('adminDashboard.colCpu'),
+                  t('adminDashboard.colRam'),
+                  t('adminDashboard.colDisk'),
+                  t('adminDashboard.colNetwork'),
+                  t('adminDashboard.colConnect'),
+                  t('adminDashboard.colActions'),
+                ].map((col, i) => (
+                  <th
+                    key={col}
+                    className={`px-4 py-2.5 border-r border-b border-line-2 font-mono text-[11px] font-normal last:border-r-0 text-ink-3 uppercase tracking-wider sticky top-0 z-20 bg-bg-2${
+                      i === 0 ? ' left-0 z-30' : ''
+                    }`}
+                  >
+                    {col}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {!loaded && [1, 2, 3].map((i) => <MonitoringRowSkeleton key={i} />)}
 
-          {!loaded && [1, 2, 3].map((i) => <MonitoringRowSkeleton key={i} />)}
+              {loaded &&
+                sortOnlineFirst(servers).map((server) => (
+                  <MonitoringRow
+                    key={server.id}
+                    server={server}
+                    stats={serverStats[server.id]}
+                    pull={pullProgress[server.id]}
+                    navigate={navigate}
+                    actionLoading={loading[server.id]}
+                    onStart={() => callAction(server.id, 'start')}
+                    onStop={() => callAction(server.id, 'stop')}
+                    onRestart={() => callAction(server.id, 'restart')}
+                    onWipe={() => setConfirmWipe({ id: server.id, name: server.name })}
+                  />
+                ))}
 
-          {loaded &&
-            servers.map((server) => (
-              <MonitoringRow
-                key={server.id}
-                server={server}
-                stats={serverStats[server.id]}
-                pull={pullProgress[server.id]}
-                navigate={navigate}
-                actionLoading={loading[server.id]}
-                onStart={() => callAction(server.id, 'start')}
-                onStop={() => callAction(server.id, 'stop')}
-                onRestart={() => callAction(server.id, 'restart')}
-                onWipe={() => setConfirmWipe({ id: server.id, name: server.name })}
-              />
-            ))}
+              {loaded && loadError && servers.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="px-5 py-10">
+                    <div className="flex items-center gap-4">
+                      <span className="font-mono text-xs" style={{ color: 'var(--red)' }}>
+                        {t('adminDashboard.loadFailed')}
+                      </span>
+                      <Button size="sm" onClick={loadServers}>
+                        {t('adminDashboard.retry')}
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              )}
 
-          {loaded && loadError && servers.length === 0 && (
-            <div className="px-5 py-10 flex items-center gap-4">
-              <span className="font-mono text-xs" style={{ color: 'var(--red)' }}>
-                {t('adminDashboard.loadFailed')}
-              </span>
-              <Button size="sm" onClick={loadServers}>
-                {t('adminDashboard.retry')}
-              </Button>
-            </div>
-          )}
-
-          {loaded && !loadError && servers.length === 0 && (
-            <div className="px-5 py-10 font-mono text-xs text-ink-3">
-              {t('adminDashboard.noServers')}
-            </div>
-          )}
+              {loaded && !loadError && servers.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="px-5 py-10 font-mono text-xs text-ink-3">
+                    {t('adminDashboard.noServers')}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 

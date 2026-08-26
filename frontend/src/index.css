@@ -121,9 +121,9 @@
   /* Layout */
   --sidebar-w: 208px;
   --topbar-h: 56px;
-  --thumb-h: 112px;
+  --thumb-h: 212px;
   --row-pad: 16px;
-  --card-min: 300px;
+  --card-min: 340px;
 
   /* Effects */
   --radius-none: 0px;

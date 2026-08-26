@@ -21,6 +21,7 @@ import dockerRoutes from './routes/docker.js';
 import { loadGames, getGames } from './lib/gameLoader.js';
 import { initScheduler } from './lib/scheduler.js';
 import { loadVisitors } from './lib/visitorStore.js';
+import { loadBlocklist } from './lib/blocklistStore.js';
 import { loadSettings, getSettings, saveSettings } from './lib/settingsStore.js';
 import { isDockerAvailable } from './lib/docker.js';
 import docker from './lib/docker.js';
@@ -101,6 +102,7 @@ await loadSettings();
 await loadGames();
 initScheduler(getGames());
 await loadVisitors();
+await loadBlocklist();
 
 const PORT = process.env.PORT ?? 4000;
 httpServer.listen(PORT, () => logger.info({ port: PORT }, 'ServerDock backend running'));

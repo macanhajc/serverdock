@@ -15,7 +15,7 @@ export function SidebarNav({
 }: SidebarNavProps) {
   return (
     <aside
-      className={`w-(--sidebar-w) shrink-0 bg-[#0c0c0c] border-r border-line flex flex-col ${className}`}
+      className={`w-(--sidebar-w) z-50 shrink-0 bg-[#0c0c0c] border-r border-line flex flex-col ${className}`}
     >
       <div className="flex items-center gap-3 px-4 py-4 border-b border-line">
         <span className="w-6 h-6 bg-accent grid place-items-center text-white font-bold text-sm font-mono shrink-0">

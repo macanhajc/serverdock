@@ -7,6 +7,7 @@ import { Toggle } from '../../../components/core/Toggle';
 import { TextField } from '../../../components/forms/TextField';
 import { ConfirmModal } from '../../../components/core/ConfirmModal';
 import { PageHeader } from '../../../components/core/PageHeader';
+import { SettingsPageSkeleton } from './components/SettingsPageSkeleton';
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -241,7 +242,7 @@ export default function SettingsPage() {
 
       <div className="flex-1 pb-24 px-6 py-6 flex flex-col gap-8">
         {!loaded ? (
-          <div className="font-mono text-xs text-ink-3">{t('common.loading')}</div>
+          <SettingsPageSkeleton />
         ) : (
           <>
             {/* Notifications */}

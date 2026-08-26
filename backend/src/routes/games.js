@@ -1,6 +1,8 @@
-import { mkdir, rm, writeFile, readFile, access } from 'fs/promises';
+import { mkdir, rm, writeFile, readFile, readdir, access } from 'fs/promises';
 import { join, dirname } from 'path';
 import { Router } from 'express';
+import multer from 'multer';
+import sharp from 'sharp';
 import { verifyToken } from '../middleware/auth.js';
 import { getGames, getGame, loadGames, GAMES_DIR, getDataPath } from '../lib/gameLoader.js';
 import { getContainerStatus } from '../lib/containers.js';
@@ -11,6 +13,46 @@ import docker from '../lib/docker.js';
 const router = Router();
 
 const REQUIRED_FIELDS = ['id', 'name', 'imageSource', 'image', 'ports'];
+
+// --- Avatar upload ---
+
+// Cards, the admin table, and the detail header only ever render the avatar
+// at up to ~480px — resizing once here means every later page load fetches a
+// few-KB file instead of re-downloading whatever the admin originally uploaded.
+const AVATAR_MAX_DIMENSION = 480;
+const AVATAR_FILENAME = 'avatar.webp';
+
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 4 * 1024 * 1024 },
+});
+
+// Wraps multer so size/field errors come back as a normal 400 instead of a 500
+// from the generic error middleware.
+function handleAvatarUpload(req, res, next) {
+  avatarUpload.single('avatar')(req, res, (err) => {
+    if (err) {
+      const message =
+        err.code === 'LIMIT_FILE_SIZE' ? 'Image must be 4 MB or smaller' : 'Upload failed';
+      return res.status(400).json({ error: message });
+    }
+    next();
+  });
+}
+
+// Removes any existing avatar.* file in a game's own folder (not its data/
+// volume) — extension may differ from the incoming upload.
+async function removeExistingAvatar(gameDir) {
+  let entries;
+  try {
+    entries = await readdir(gameDir);
+  } catch {
+    return;
+  }
+  await Promise.all(
+    entries.filter((f) => f.startsWith('avatar.')).map((f) => rm(join(gameDir, f), { force: true }))
+  );
+}
 
 function validateId(id) {
   return /^[a-z0-9-]+$/.test(id);
@@ -128,18 +170,10 @@ router.put('/:id', verifyToken, async (req, res) => {
   const existing = getGame(id);
   if (!existing) return res.status(404).json({ error: 'Game not found' });
 
-  // Preserve fields owned by other features (schedules, backup retention) —
-  // the config form doesn't send them and a full overwrite would wipe them.
-  const game = {
-    ...req.body,
-    id,
-    ...(req.body.schedules === undefined && existing.schedules !== undefined
-      ? { schedules: existing.schedules }
-      : {}),
-    ...(req.body.backupRetention === undefined && existing.backupRetention !== undefined
-      ? { backupRetention: existing.backupRetention }
-      : {}),
-  };
+  // Merge onto the existing record rather than overwriting it — fields the
+  // config form doesn't manage (avatar, avatarVersion, imageBuilt, schedules,
+  // backupRetention, ...) must survive a plain config save.
+  const game = { ...existing, ...req.body, id };
 
   const missing = REQUIRED_FIELDS.filter((f) => game[f] === undefined);
   if (missing.length)
@@ -194,6 +228,64 @@ router.post('/:id/dockerfile', verifyToken, async (req, res) => {
 
   await writeFile(join(GAMES_DIR, id, 'Dockerfile'), content);
   res.json({ message: 'Dockerfile saved' });
+});
+
+// POST /api/games/:id/avatar
+router.post('/:id/avatar', verifyToken, handleAvatarUpload, async (req, res) => {
+  const { id } = req.params;
+  const game = getGame(id);
+  if (!game) return res.status(404).json({ error: 'Game not found' });
+
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: 'Image file is required' });
+
+  let resized;
+  try {
+    resized = await sharp(file.buffer)
+      .rotate() // normalize orientation using EXIF before stripping it
+      .resize({
+        width: AVATAR_MAX_DIMENSION,
+        height: AVATAR_MAX_DIMENSION,
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
+      .webp({ quality: 82 })
+      .toBuffer();
+  } catch {
+    return res.status(400).json({ error: 'Could not process image — is it a valid image file?' });
+  }
+
+  const gameDir = join(GAMES_DIR, id);
+  await removeExistingAvatar(gameDir);
+  await writeFile(join(gameDir, AVATAR_FILENAME), resized);
+
+  const jsonPath = join(gameDir, `${id}.json`);
+  const updated = JSON.parse(await readFile(jsonPath, 'utf-8'));
+  updated.avatar = AVATAR_FILENAME;
+  updated.avatarVersion = Date.now(); // cache-busts the versioned public URL
+  await writeFile(jsonPath, JSON.stringify(updated, null, 2));
+  await loadGames();
+
+  res.json({ avatar: AVATAR_FILENAME });
+});
+
+// DELETE /api/games/:id/avatar
+router.delete('/:id/avatar', verifyToken, async (req, res) => {
+  const { id } = req.params;
+  const game = getGame(id);
+  if (!game) return res.status(404).json({ error: 'Game not found' });
+
+  const gameDir = join(GAMES_DIR, id);
+  await removeExistingAvatar(gameDir);
+
+  const jsonPath = join(gameDir, `${id}.json`);
+  const updated = JSON.parse(await readFile(jsonPath, 'utf-8'));
+  delete updated.avatar;
+  delete updated.avatarVersion;
+  await writeFile(jsonPath, JSON.stringify(updated, null, 2));
+  await loadGames();
+
+  res.json({ message: 'Avatar removed' });
 });
 
 // POST /api/games/:id/build

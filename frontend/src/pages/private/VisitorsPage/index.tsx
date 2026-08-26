@@ -5,7 +5,8 @@ import { useToast } from '../../../context/ToastContext';
 import { Button } from '../../../components/core/Button';
 import { PageHeader } from '../../../components/core/PageHeader';
 import { formatDate } from '../../../utils/format';
-import type { Visitor } from '../../../types';
+import { VisitorRowSkeleton } from './components/VisitorRowSkeleton';
+import type { Visitor, BlockedIp } from '../../../types';
 
 export default function VisitorsPage() {
   const { t } = useTranslation();
@@ -13,6 +14,7 @@ export default function VisitorsPage() {
   const { addToast } = useToast();
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [blockedIps, setBlockedIps] = useState<BlockedIp[]>([]);
 
   const fetchVisitors = useCallback(
     () =>
@@ -28,9 +30,23 @@ export default function VisitorsPage() {
     [token]
   );
 
+  const fetchBlockedIps = useCallback(
+    () =>
+      fetch('/api/visitors/blocklist', { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((data: BlockedIp[]) => setBlockedIps(data))
+        .catch(() => {}),
+    [token]
+  );
+
   useEffect(() => {
     fetchVisitors();
-  }, [fetchVisitors]);
+    fetchBlockedIps();
+  }, [fetchVisitors, fetchBlockedIps]);
+
+  // IPs blocked from a visitor row that's since been removed — the per-row
+  // Unblock button can't reach these, so they get their own section.
+  const orphanedBlockedIps = blockedIps.filter((b) => !visitors.some((v) => v.ip === b.ip));
 
   async function removeVisitor(id: string, username: string) {
     try {
@@ -49,14 +65,15 @@ export default function VisitorsPage() {
     }
   }
 
-  async function blockVisitor(id: string, username: string) {
+  async function blockVisitor(id: string, username: string, ip?: string) {
     try {
       const res = await fetch(`/api/visitors/${id}/block`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        setVisitors((prev) => prev.map((v) => (v.id === id ? { ...v, blocked: true } : v)));
+        setVisitors((prev) => prev.map((v) => (v.ip && v.ip === ip ? { ...v, blocked: true } : v)));
+        if (ip) fetchBlockedIps();
         addToast(t('visitors.blocked', { username }));
       } else {
         addToast(t('visitors.blockFailed'), 'error');
@@ -66,15 +83,34 @@ export default function VisitorsPage() {
     }
   }
 
-  async function unblockVisitor(id: string, username: string) {
+  async function unblockVisitor(id: string, username: string, ip?: string) {
     try {
       const res = await fetch(`/api/visitors/${id}/unblock`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        setVisitors((prev) => prev.map((v) => (v.id === id ? { ...v, blocked: false } : v)));
+        setVisitors((prev) => prev.map((v) => (v.ip && v.ip === ip ? { ...v, blocked: false } : v)));
+        setBlockedIps((prev) => prev.filter((b) => b.ip !== ip));
         addToast(t('visitors.unblocked', { username }));
+      } else {
+        addToast(t('visitors.unblockFailed'), 'error');
+      }
+    } catch {
+      addToast(t('visitors.couldNotReach'), 'error');
+    }
+  }
+
+  async function unblockIp(ip: string) {
+    try {
+      const res = await fetch(`/api/visitors/blocklist/${encodeURIComponent(ip)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setBlockedIps((prev) => prev.filter((b) => b.ip !== ip));
+        setVisitors((prev) => prev.map((v) => (v.ip === ip ? { ...v, blocked: false } : v)));
+        addToast(t('visitors.ipUnblocked', { ip }));
       } else {
         addToast(t('visitors.unblockFailed'), 'error');
       }
@@ -90,8 +126,35 @@ export default function VisitorsPage() {
         subtitle={t('visitors.subtitle', { count: visitors.length })}
       />
 
-      <div className="px-6 py-5">
-        {!loaded && <span className="font-mono text-xs text-ink-3">{t('common.loading')}</span>}
+      <div className="px-6 py-5 container">
+        {!loaded && (
+          <div className="border border-line bg-bg-1 overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b bg-bg-2 border-line">
+                  <th className="text-left px-4 py-3 font-mono border-r border-line text-[11px] text-ink-3 uppercase tracking-wider whitespace-nowrap">
+                    {t('visitors.colUsername')}
+                  </th>
+                  <th className="text-left px-4 py-3 font-mono border-r border-line text-[11px] text-ink-3 uppercase tracking-wider whitespace-nowrap">
+                    {t('visitors.colIp')}
+                  </th>
+                  <th className="text-left px-4 py-3 font-mono border-r border-line text-[11px] text-ink-3 uppercase tracking-wider whitespace-nowrap">
+                    {t('visitors.colFirstSeen')}
+                  </th>
+                  <th className="text-left px-4 py-3 font-mono text-[11px] border-r border-line text-ink-3 uppercase tracking-wider whitespace-nowrap">
+                    {t('visitors.colLastSeen')}
+                  </th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {[1, 2, 3].map((i) => (
+                  <VisitorRowSkeleton key={i} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {loaded && visitors.length === 0 && (
           <span className="font-mono text-xs text-ink-3">{t('visitors.noVisitors')}</span>
@@ -154,7 +217,7 @@ export default function VisitorsPage() {
                           <Button
                             size="sm"
                             variant="warn"
-                            onClick={() => unblockVisitor(v.id, v.username)}
+                            onClick={() => unblockVisitor(v.id, v.username, v.ip)}
                           >
                             {t('visitors.unblock')}
                           </Button>
@@ -162,7 +225,7 @@ export default function VisitorsPage() {
                           <Button
                             size="sm"
                             variant="danger"
-                            onClick={() => blockVisitor(v.id, v.username)}
+                            onClick={() => blockVisitor(v.id, v.username, v.ip)}
                           >
                             {t('visitors.block')}
                           </Button>
@@ -180,6 +243,49 @@ export default function VisitorsPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {orphanedBlockedIps.length > 0 && (
+          <div className="mt-6">
+            <h2 className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-2">
+              {t('visitors.blockedIpsTitle')}
+            </h2>
+            <div className="border border-line bg-bg-1 overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b bg-bg-2 border-line">
+                    <th className="text-left px-4 py-3 font-mono border-r border-line text-[11px] text-ink-3 uppercase tracking-wider whitespace-nowrap">
+                      {t('visitors.colIp')}
+                    </th>
+                    <th className="text-left px-4 py-3 font-mono text-[11px] border-r border-line text-ink-3 uppercase tracking-wider whitespace-nowrap">
+                      {t('visitors.colBlockedAt')}
+                    </th>
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {orphanedBlockedIps.map((b, i) => (
+                    <tr
+                      key={b.ip}
+                      className={`border-b border-line last:border-0 ${i % 2 === 1 ? 'bg-bg-2' : ''}`}
+                    >
+                      <td className="px-4 py-3 font-mono border-r border-line text-xs text-ink-2">
+                        {b.ip}
+                      </td>
+                      <td className="px-4 py-3 font-mono border-r border-line text-xs text-ink-3 whitespace-nowrap">
+                        {formatDate(b.blockedAt)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button size="sm" variant="warn" onClick={() => unblockIp(b.ip)}>
+                          {t('visitors.unblock')}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

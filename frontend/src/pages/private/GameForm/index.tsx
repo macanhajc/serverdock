@@ -61,6 +61,13 @@ export default function GameForm() {
   const [envVars, setEnvVars] = useState<EnvVarRow[]>([]);
   const [idTouched, setIdTouched] = useState(false);
 
+  const [storeUrl, setStoreUrl] = useState('');
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [removeAvatar, setRemoveAvatar] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
   const [rconEnabled, setRconEnabled] = useState(false);
   const [rconPort, setRconPort] = useState('');
   const [rconPassword, setRconPassword] = useState('');
@@ -100,6 +107,12 @@ export default function GameForm() {
         setImageSource(game.imageSource ?? 'public');
         setImage(game.image ?? '');
         setDataMount(game.dataMount ?? '/data');
+        setStoreUrl(game.storeUrl ?? '');
+        setAvatarPreview(
+          game.avatar ? `/api/servers/${id}/avatar?v=${game.avatarVersion ?? 0}` : null
+        );
+        setAvatarFile(null);
+        setRemoveAvatar(false);
         setQueryType(game.query?.type ?? 'none');
         setQueryPort(game.query?.port ? String(game.query.port) : '');
         setDockerfile('');
@@ -127,6 +140,40 @@ export default function GameForm() {
       buildLogRef.current.scrollTop = buildLogRef.current.scrollHeight;
     }
   }, [buildLog]);
+
+  // Revoke the previous object URL whenever the preview changes/unmounts —
+  // server-side avatar URLs (starting with /api/...) aren't blob: URLs, so this is a no-op for those.
+  useEffect(() => {
+    if (!avatarPreview?.startsWith('blob:')) return;
+    return () => URL.revokeObjectURL(avatarPreview);
+  }, [avatarPreview]);
+
+  const AVATAR_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+  const AVATAR_MAX_BYTES = 4 * 1024 * 1024;
+
+  function handleAvatarChange(file: File | null) {
+    if (!file) return;
+    if (!AVATAR_TYPES.includes(file.type)) {
+      setAvatarError(t('gameForm.errAvatarType'));
+      return;
+    }
+    if (file.size > AVATAR_MAX_BYTES) {
+      setAvatarError(t('gameForm.errAvatarSize'));
+      return;
+    }
+    setAvatarError('');
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+    setRemoveAvatar(false);
+  }
+
+  function handleRemoveAvatar() {
+    setAvatarError('');
+    setAvatarFile(null);
+    setAvatarPreview(null);
+    setRemoveAvatar(true);
+    if (avatarInputRef.current) avatarInputRef.current.value = '';
+  }
 
   useEffect(() => {
     if (!savedId || buildStatus !== 'building') return;
@@ -177,6 +224,11 @@ export default function GameForm() {
     setRconEnabled(!!tpl.rcon?.enabled);
     setRconPort(tpl.rcon?.port ? String(tpl.rcon.port) : '');
     setRconPassword(tpl.rcon?.password ?? '');
+    setStoreUrl('');
+    setAvatarFile(null);
+    setAvatarPreview(null);
+    setRemoveAvatar(false);
+    setAvatarError('');
   }
 
   function handleNameChange(v: string) {
@@ -277,6 +329,7 @@ export default function GameForm() {
       description: description.trim(),
       imageSource,
       image: image.trim(),
+      storeUrl: storeUrl.trim() || null,
       dataMount: dataMount.trim() || '/data',
       query: queryType === 'a2s' && queryPort ? { type: 'a2s', port: Number(queryPort) } : null,
       ports: ports
@@ -331,6 +384,28 @@ export default function GameForm() {
       }
     }
 
+    if (avatarFile) {
+      const formData = new FormData();
+      formData.append('avatar', avatarFile);
+      const avatarRes = await fetch(`/api/games/${targetId}/avatar`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      }).catch(() => null);
+
+      if (!avatarRes || !avatarRes.ok) {
+        const data = await avatarRes?.json().catch(() => ({}));
+        setError(data?.error ?? t('gameForm.errAvatarFailed'));
+        setSaving(false);
+        return;
+      }
+    } else if (removeAvatar && isEdit) {
+      await fetch(`/api/games/${targetId}/avatar`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => null);
+    }
+
     if (!buildAfter) {
       navigate(`/admin/servers/${id ?? slug}`);
       return;
@@ -380,7 +455,7 @@ export default function GameForm() {
   ];
 
   return (
-    <div className="flex flex-col container h-screen">
+    <div className="flex flex-col h-screen">
       <div className="flex items-center gap-4 py-4 px-6 border-b border-line bg-bg-1 shrink-0">
         <button
           type="button"
@@ -400,7 +475,7 @@ export default function GameForm() {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="px-6 pt-6 pb-8">
+        <div className="px-6 pt-6 pb-8 container">
           {!isEdit && (
             <div className="mb-6">
               <div className="font-mono tracking-widest uppercase text-ink-3 mb-3">
@@ -446,6 +521,50 @@ export default function GameForm() {
               onChange={(e) => setDescription(e.target.value)}
               className="mt-4"
             />
+          </FormSection>
+
+          <FormSection title={t('gameForm.presentationTitle')} desc={t('gameForm.presentationDesc')}>
+            <div className="grid grid-cols-[120px_1fr] gap-[14px_18px] items-start">
+              <div className="flex flex-col gap-2">
+                <div className="w-30 h-30 border border-line bg-bg-2 overflow-hidden grid place-items-center">
+                  {avatarPreview ? (
+                    <img src={avatarPreview} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="font-mono text-2xl font-bold text-ink-3">
+                      {(name || slug).slice(0, 2).toUpperCase() || '—'}
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-2" style={{width: "max-content"}}>
+                  <Button size="sm" onClick={() => avatarInputRef.current?.click()}>
+                    {t('gameForm.avatarUpload')}
+                  </Button>
+                  {avatarPreview && (
+                    <Button size="sm" variant="ghost" onClick={handleRemoveAvatar}>
+                      {t('gameForm.avatarRemove')}
+                    </Button>
+                  )}
+                </div>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="hidden"
+                  onChange={(e) => handleAvatarChange(e.target.files?.[0] ?? null)}
+                />
+                {avatarError && (
+                  <span className="font-mono text-[10px] text-red">{avatarError}</span>
+                )}
+              </div>
+              <TextField
+                label={t('gameForm.fieldStoreUrl')}
+                hint={t('gameForm.hintStoreUrl')}
+                mono
+                placeholder="https://store.steampowered.com/app/…"
+                value={storeUrl}
+                onChange={(e) => setStoreUrl(e.target.value)}
+              />
+            </div>
           </FormSection>
 
           <FormSection title={t('gameForm.imageTitle')} desc={t('gameForm.imageDesc')}>

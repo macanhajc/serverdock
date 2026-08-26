@@ -46,6 +46,8 @@ export interface Server {
   id: string;
   name: string;
   image: string;
+  avatarUrl?: string | null;
+  storeUrl?: string | null;
   status: ContainerStatus;
   imageSource: 'public' | 'local';
   imageBuilt?: boolean;
@@ -63,6 +65,7 @@ export interface Server {
   environment?: EnvVar[];
   rcon?: { enabled: boolean; port?: number | null; password?: string };
   startedAt?: string | null;
+  lastActiveAt?: string | null;
 }
 
 export interface ServerStats {
@@ -85,6 +88,11 @@ export interface Visitor {
   firstSeen?: string;
   lastSeen?: string;
   blocked: boolean;
+}
+
+export interface BlockedIp {
+  ip: string;
+  blockedAt: string;
 }
 
 export interface VpnSelf {

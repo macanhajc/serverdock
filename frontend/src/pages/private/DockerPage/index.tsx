@@ -5,6 +5,7 @@ import { useToast } from '../../../context/ToastContext';
 import { Button } from '../../../components/core/Button';
 import { PageHeader } from '../../../components/core/PageHeader';
 import { ConfirmModal } from '../../../components/core/ConfirmModal';
+import { DockerRowSkeleton } from './components/DockerRowSkeleton';
 
 interface DockerImage {
   id: string;
@@ -50,6 +51,7 @@ export default function DockerPage() {
   const [containers, setContainers] = useState<DockerContainer[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [confirm, setConfirm] = useState<{ type: 'image' | 'container'; id: string; label: string } | null>(null);
+  const [sizeSort, setSizeSort] = useState<'asc' | 'desc' | null>(null);
 
   const authHeader = { Authorization: `Bearer ${token}` };
 
@@ -70,6 +72,15 @@ export default function DockerPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const sortedImages =
+    sizeSort === null
+      ? images
+      : [...images].sort((a, b) => (sizeSort === 'asc' ? a.size - b.size : b.size - a.size));
+
+  function toggleSizeSort() {
+    setSizeSort((prev) => (prev === null ? 'desc' : prev === 'desc' ? 'asc' : null));
+  }
 
   async function handleDelete() {
     if (!confirm) return;
@@ -103,7 +114,7 @@ export default function DockerPage() {
         subtitle={t('docker.subtitle', { images: images.length, containers: containers.length })}
       />
 
-      <div className="px-6 py-5">
+      <div className="px-6 py-5 container">
         <div className="flex gap-0 border-b border-line mb-5">
           <button className={TAB_CLS(tab === 'images')} onClick={() => setTab('images')}>
             {t('docker.tabImages')} ({images.length})
@@ -116,8 +127,47 @@ export default function DockerPage() {
           </div>
         </div>
 
-        {!loaded && (
-          <span className="font-mono text-xs text-ink-3">{t('common.loading')}</span>
+        {!loaded && tab === 'images' && (
+          <div className="border border-line bg-bg-1 overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b bg-bg-2 border-line">
+                  <Th>{t('docker.colId')}</Th>
+                  <Th>{t('docker.colTags')}</Th>
+                  <Th>{t('docker.colSize')}</Th>
+                  <Th>{t('docker.colCreated')}</Th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {[1, 2, 3].map((i) => (
+                  <DockerRowSkeleton key={i} columns={4} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {!loaded && tab === 'containers' && (
+          <div className="border border-line bg-bg-1 overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b bg-bg-2 border-line">
+                  <Th>{t('docker.colId')}</Th>
+                  <Th>{t('docker.colName')}</Th>
+                  <Th>{t('docker.colImage')}</Th>
+                  <Th>{t('docker.colState')}</Th>
+                  <Th>{t('docker.colCreated')}</Th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {[1, 2, 3].map((i) => (
+                  <DockerRowSkeleton key={i} columns={5} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
 
         {loaded && tab === 'images' && (
@@ -131,13 +181,13 @@ export default function DockerPage() {
                     <tr className="border-b bg-bg-2 border-line">
                       <Th>{t('docker.colId')}</Th>
                       <Th>{t('docker.colTags')}</Th>
-                      <Th>{t('docker.colSize')}</Th>
+                      <Th sortDir={sizeSort} onSort={toggleSizeSort}>{t('docker.colSize')}</Th>
                       <Th>{t('docker.colCreated')}</Th>
                       <th className="px-4 py-3" />
                     </tr>
                   </thead>
                   <tbody>
-                    {images.map((img, i) => (
+                    {sortedImages.map((img, i) => (
                       <tr key={img.id} className={`border-b border-line last:border-0 ${i % 2 === 1 ? 'bg-bg-2' : ''}`}>
                         <Td mono>{img.shortId}</Td>
                         <Td mono>
@@ -241,10 +291,28 @@ export default function DockerPage() {
   );
 }
 
-function Th({ children }: { children: React.ReactNode }) {
+function Th({
+  children,
+  sortDir,
+  onSort,
+}: {
+  children: React.ReactNode;
+  sortDir?: 'asc' | 'desc' | null;
+  onSort?: () => void;
+}) {
   return (
-    <th className="text-left px-4 py-3 font-mono border-r border-line text-[11px] text-ink-3 uppercase tracking-wider whitespace-nowrap">
+    <th
+      onClick={onSort}
+      className={`text-left px-4 py-3 font-mono border-r border-line text-[11px] text-ink-3 uppercase tracking-wider whitespace-nowrap ${
+        onSort ? 'cursor-pointer select-none hover:text-ink-2' : ''
+      }`}
+    >
       {children}
+      {onSort && (
+        <span className="inline-block w-3 ml-1 text-ink-3">
+          {sortDir === 'asc' ? '▲' : sortDir === 'desc' ? '▼' : ''}
+        </span>
+      )}
     </th>
   );
 }
