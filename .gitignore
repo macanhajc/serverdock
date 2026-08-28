@@ -7,4 +7,5 @@ backend/.env
 backend/auth.json
 backend/visitors.json
 backend/games/*/data/
+backend/games/*/backups/
 *.log

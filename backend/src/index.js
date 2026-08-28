@@ -31,7 +31,7 @@ import { setupSocketHandlers } from './lib/socketHandlers.js';
 
 const app = express();
 const httpServer = createServer(app);
-const corsOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:5173';
+const corsOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:5174';
 
 const io = new Server(httpServer, {
   cors: { origin: corsOrigin },
