@@ -4,15 +4,42 @@ import { Router } from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
 import { verifyToken } from '../middleware/auth.js';
-import { getGames, getGame, loadGames, GAMES_DIR, getDataPath } from '../lib/gameLoader.js';
+import { getGames, getGame, loadGames, saveGame, GAMES_DIR, getDataPath } from '../lib/gameLoader.js';
 import { getContainerStatus } from '../lib/containers.js';
 import { getIo } from '../lib/socket.js';
 import { emitServerEvent } from '../lib/statusBus.js';
 import docker from '../lib/docker.js';
+import { checkImageUpdate } from '../lib/imageUpdates.js';
 
 const router = Router();
 
 const REQUIRED_FIELDS = ['id', 'name', 'imageSource', 'image', 'ports'];
+
+// Fields the config form is allowed to set via PUT. Everything else on a game
+// record (avatar, avatarVersion, imageBuilt, schedules, backupRetention, ...)
+// is system-managed and must survive a plain config save regardless of what a
+// request body happens to contain.
+const EDITABLE_FIELDS = [
+  'name',
+  'description',
+  'imageSource',
+  'image',
+  'storeUrl',
+  'dataMount',
+  'query',
+  'ports',
+  'environment',
+  'resources',
+  'rcon',
+];
+
+function pickEditableFields(body) {
+  const patch = {};
+  for (const f of EDITABLE_FIELDS) {
+    if (body[f] !== undefined) patch[f] = body[f];
+  }
+  return patch;
+}
 
 // --- Avatar upload ---
 
@@ -69,11 +96,18 @@ function validatePortRange(ports) {
 
 
 async function updateImageBuilt(id, value) {
-  const jsonPath = join(GAMES_DIR, id, `${id}.json`);
-  const game = JSON.parse(await readFile(jsonPath, 'utf-8'));
-  game.imageBuilt = value;
-  await writeFile(jsonPath, JSON.stringify(game, null, 2));
+  await saveGame(id, { imageBuilt: value });
   await loadGames();
+}
+
+// Everything next to the Dockerfile except runtime state (data/backups) goes
+// into the build context, so a Dockerfile can COPY in local content (mods,
+// plugin jars, configs) and not just RUN-fetch things from the internet.
+// Docker still honors a .dockerignore in here to trim what actually lands
+// inside COPY/ADD destinations.
+async function buildContextEntries(id) {
+  const entries = await readdir(join(GAMES_DIR, id), { withFileTypes: true });
+  return entries.filter((e) => e.name !== 'data' && e.name !== 'backups').map((e) => e.name);
 }
 
 async function runBuild(id, imageName) {
@@ -93,10 +127,8 @@ async function runBuild(id, imageName) {
 
   let buildStream;
   try {
-    buildStream = await docker.buildImage(
-      { context: join(GAMES_DIR, id), src: ['Dockerfile'] },
-      { t: imageName }
-    );
+    const src = await buildContextEntries(id);
+    buildStream = await docker.buildImage({ context: join(GAMES_DIR, id), src }, { t: imageName });
   } catch (err) {
     notifyFailed(err.message);
     return;
@@ -135,6 +167,86 @@ router.get('/:id', verifyToken, async (req, res) => {
   res.json(game);
 });
 
+// POST /api/games/:id/check-update — live registry digest check, on demand only
+// (never scheduled — Docker Hub's anonymous pull-rate limit applies to this too)
+router.post('/:id/check-update', verifyToken, async (req, res) => {
+  const game = getGame(req.params.id);
+  if (!game) return res.status(404).json({ error: 'Game not found' });
+  if (game.imageSource !== 'public') {
+    return res.status(400).json({ error: 'Only public images can be checked for updates' });
+  }
+  res.json(await checkImageUpdate(game.image));
+});
+
+// GET /api/games/:id/export — config + Dockerfile as a portable JSON bundle,
+// for versioning/migrating server definitions independently of data backups.
+// Excludes data/ (that's what backups are for) and the avatar image itself
+// (this is JSON-only) along with anything tied to this specific machine.
+router.get('/:id/export', verifyToken, async (req, res) => {
+  const { id } = req.params;
+  const game = getGame(id);
+  if (!game) return res.status(404).json({ error: 'Game not found' });
+
+  const { avatar: _avatar, avatarVersion: _avatarVersion, imageBuilt: _imageBuilt, ...exportable } =
+    game;
+
+  let dockerfile;
+  if (game.imageSource === 'local') {
+    try {
+      dockerfile = await readFile(join(GAMES_DIR, id, 'Dockerfile'), 'utf-8');
+    } catch {
+      // no Dockerfile saved yet — export without one
+    }
+  }
+
+  res.setHeader('Content-Disposition', `attachment; filename="${id}.serverdock.json"`);
+  res.json({ version: 1, exportedAt: new Date().toISOString(), game: exportable, dockerfile });
+});
+
+// POST /api/games/import — creates a new game from a bundle produced by the
+// export route above. Same validation as a normal create; rejects if the id
+// already exists rather than guessing at a merge.
+router.post('/import', verifyToken, async (req, res) => {
+  const { game, dockerfile } = req.body ?? {};
+  if (!game || typeof game !== 'object') {
+    return res.status(400).json({ error: 'Missing "game" in import bundle' });
+  }
+
+  const missing = REQUIRED_FIELDS.filter((f) => game[f] === undefined);
+  if (missing.length)
+    return res.status(400).json({ error: `Missing fields: ${missing.join(', ')}` });
+
+  if (!validateId(game.id)) {
+    return res
+      .status(400)
+      .json({ error: 'id must be lowercase letters, numbers, and hyphens only' });
+  }
+
+  if (getGame(game.id))
+    return res.status(409).json({ error: 'A game with this id already exists' });
+
+  const portRangeErr = validatePortRange(game.ports);
+  if (portRangeErr) return res.status(400).json({ error: portRangeErr });
+
+  // Strip the same machine-local fields export leaves out, in case an older
+  // export or a hand-edited bundle still carries them.
+  const { avatar: _avatar, avatarVersion: _avatarVersion, imageBuilt: _imageBuilt, ...toWrite } =
+    game;
+
+  const gameDir = join(GAMES_DIR, toWrite.id);
+  await mkdir(gameDir, { recursive: true });
+  await mkdir(getDataPath(toWrite.id), { recursive: true });
+  await writeFile(join(gameDir, `${toWrite.id}.json`), JSON.stringify(toWrite, null, 2));
+
+  if (toWrite.imageSource === 'local' && typeof dockerfile === 'string' && dockerfile.trim()) {
+    await writeFile(join(gameDir, 'Dockerfile'), dockerfile);
+  }
+
+  await loadGames();
+
+  res.status(201).json({ id: toWrite.id, message: 'Game imported' });
+});
+
 // POST /api/games
 router.post('/', verifyToken, async (req, res) => {
   const game = req.body ?? {};
@@ -170,10 +282,8 @@ router.put('/:id', verifyToken, async (req, res) => {
   const existing = getGame(id);
   if (!existing) return res.status(404).json({ error: 'Game not found' });
 
-  // Merge onto the existing record rather than overwriting it — fields the
-  // config form doesn't manage (avatar, avatarVersion, imageBuilt, schedules,
-  // backupRetention, ...) must survive a plain config save.
-  const game = { ...existing, ...req.body, id };
+  const patch = pickEditableFields(req.body ?? {});
+  const game = { ...existing, ...patch };
 
   const missing = REQUIRED_FIELDS.filter((f) => game[f] === undefined);
   if (missing.length)
@@ -182,7 +292,7 @@ router.put('/:id', verifyToken, async (req, res) => {
   const portRangeErr = validatePortRange(game.ports);
   if (portRangeErr) return res.status(400).json({ error: portRangeErr });
 
-  await writeFile(join(GAMES_DIR, id, `${id}.json`), JSON.stringify(game, null, 2));
+  await saveGame(id, patch);
   await loadGames();
 
   res.json({ message: 'Game updated' });
@@ -259,11 +369,8 @@ router.post('/:id/avatar', verifyToken, handleAvatarUpload, async (req, res) => 
   await removeExistingAvatar(gameDir);
   await writeFile(join(gameDir, AVATAR_FILENAME), resized);
 
-  const jsonPath = join(gameDir, `${id}.json`);
-  const updated = JSON.parse(await readFile(jsonPath, 'utf-8'));
-  updated.avatar = AVATAR_FILENAME;
-  updated.avatarVersion = Date.now(); // cache-busts the versioned public URL
-  await writeFile(jsonPath, JSON.stringify(updated, null, 2));
+  // avatarVersion cache-busts the versioned public URL
+  await saveGame(id, { avatar: AVATAR_FILENAME, avatarVersion: Date.now() });
   await loadGames();
 
   res.json({ avatar: AVATAR_FILENAME });
@@ -278,11 +385,8 @@ router.delete('/:id/avatar', verifyToken, async (req, res) => {
   const gameDir = join(GAMES_DIR, id);
   await removeExistingAvatar(gameDir);
 
-  const jsonPath = join(gameDir, `${id}.json`);
-  const updated = JSON.parse(await readFile(jsonPath, 'utf-8'));
-  delete updated.avatar;
-  delete updated.avatarVersion;
-  await writeFile(jsonPath, JSON.stringify(updated, null, 2));
+  // undefined values are dropped by JSON.stringify, so this clears both keys
+  await saveGame(id, { avatar: undefined, avatarVersion: undefined });
   await loadGames();
 
   res.json({ message: 'Avatar removed' });

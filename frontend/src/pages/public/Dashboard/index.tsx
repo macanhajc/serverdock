@@ -1,34 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { io } from 'socket.io-client';
+import socket from '../../../socket';
 import { ServerCard } from '../../../components/data/ServerCard';
 import { ServerCardSkeleton } from '../../../components/data/ServerCardSkeleton';
 import { LangSwitcher } from '../../../components/core/LangSwitcher';
-import { CopyButton } from '../../../components/core/CopyButton';
 import { PageHeader } from '../../../components/core/PageHeader';
 import { HowToConnectModal } from './components/HowToConnectModal';
 import { toUiStatus, gameHue, gameMark, sortOnlineFirst } from '../../../utils/serverStatus';
 import { timeAgo } from '../../../utils/format';
 import type { Server } from '../../../types';
 
-interface ConnectCellProps {
-  host: string;
-  port: number;
-}
-
-function ConnectCell({ host, port }: ConnectCellProps) {
-  const addr = `${host}:${port}`;
-  return (
-    <span className="flex items-center gap-2">
-      <span>{addr}</span>
-      <CopyButton text={addr} className="text-sm" />
-    </span>
-  );
-}
-
 interface Visitor {
   username: string;
+}
+
+function maintenanceMinutes(at: string): number {
+  return Math.max(1, Math.round((new Date(at).getTime() - Date.now()) / 60_000));
 }
 
 export default function PublicDashboard() {
@@ -37,6 +25,7 @@ export default function PublicDashboard() {
   const [visitor, setVisitor] = useState<Visitor | null>(null);
   const [identifying, setIdentifying] = useState(true);
   const [servers, setServers] = useState<Server[]>([]);
+  const [serversLoaded, setServersLoaded] = useState(false);
   const [search, setSearch] = useState('');
   const [showHelp, setShowHelp] = useState(false);
 
@@ -70,29 +59,43 @@ export default function PublicDashboard() {
       fetch('/api/servers')
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then((data: Server[]) => setServers(data))
-        .catch(() => {}),
+        .catch(() => {})
+        .finally(() => setServersLoaded(true)),
     []
   );
 
   useEffect(() => {
     if (!visitor) return;
 
-    const socket = io({ autoConnect: false });
-
-    socket.on('status:all', (snapshot: Array<{ id: string; status: Server['status']; players: number | null }>) => {
+    function onStatusAll(
+      snapshot: Array<{
+        id: string;
+        status: Server['status'];
+        players: number | null;
+        playerList?: string | null;
+      }>
+    ) {
       setServers((prev) => {
         if (prev.length === 0) return prev;
-        const map = new Map(snapshot.map((u) => [u.id, { status: u.status, players: u.players }]));
+        const map = new Map(snapshot.map((u) => [u.id, u]));
         return prev.map((s) => {
           const u = map.get(s.id);
           if (!u) return s;
           const players = u.status === 'running' ? (u.players ?? s.players) : u.players;
-          return { ...s, status: u.status, players };
+          return { ...s, status: u.status, players, playerList: u.playerList ?? s.playerList };
         });
       });
-    });
+    }
 
-    socket.on('status:update', ({ id, status, players }: { id: string; status: Server['status']; players: number | null }) => {
+    function onStatusUpdate({
+      id,
+      status,
+      players,
+    }: {
+      id: string;
+      status: Server['status'];
+      players: number | null;
+    }) {
       setServers((prev) =>
         prev.map((s) =>
           s.id === id
@@ -100,23 +103,46 @@ export default function PublicDashboard() {
             : s
         )
       );
-    });
+    }
+
+    // Player count/list can change without a status transition (players
+    // joining a still-running server) — see statusBus.emitPlayers.
+    function onPlayersUpdate({
+      id,
+      players,
+      playerList,
+    }: {
+      id: string;
+      players: number | null;
+      playerList: string | null;
+    }) {
+      setServers((prev) => prev.map((s) => (s.id === id ? { ...s, players, playerList } : s)));
+    }
+
+    socket.on('status:all', onStatusAll);
+    socket.on('status:update', onStatusUpdate);
+    socket.on('players:update', onPlayersUpdate);
 
     fetchServers().then(() => {
-      socket.connect();
+      // Reuses the app's one shared connection (see socket.ts) instead of
+      // opening a second transport — an already-authenticated admin landing
+      // here keeps their connection, and an anonymous visitor connects it here.
+      if (!socket.connected) socket.connect();
       socket.emit('join:status');
     });
 
     const poll = setInterval(fetchServers, 10_000);
 
     return () => {
+      socket.off('status:all', onStatusAll);
+      socket.off('status:update', onStatusUpdate);
+      socket.off('players:update', onPlayersUpdate);
       socket.emit('leave:status');
-      socket.disconnect();
       clearInterval(poll);
     };
   }, [visitor, fetchServers]);
 
-  const loading = identifying || servers.length === 0;
+  const loading = identifying || !serversLoaded;
   const onlineCount = servers.filter((s) => s.status === 'running').length;
   const filtered = sortOnlineFirst(
     search ? servers.filter((s) => s.name.toLowerCase().includes(search.toLowerCase())) : servers
@@ -186,30 +212,48 @@ export default function PublicDashboard() {
             name={server.name}
             engine={server.image}
             status={toUiStatus(server.status)}
-            players={server.players ?? '—'}
-            ip={server.connection
-              ? <ConnectCell host={server.connection.host} port={server.connection.port} />
-              : <span className="font-mono text-xs text-ink-3">—</span>
+            players={
+              server.playerList ? (
+                <span title={server.playerList}>{server.players ?? '—'}</span>
+              ) : (
+                (server.players ?? '—')
+              )
             }
+            connection={server.connection}
             hue={gameHue(server.id)}
             mark={gameMark(server.name)}
             source={server.imageSource === 'local' ? 'Steam' : 'Public'}
             avatarUrl={server.avatarUrl}
             storeUrl={server.storeUrl}
-            pinnedEnv={server.pinnedEnv ?? []}
+            pinnedEnv={server.pinnedEnv}
             lastActive={
               server.status !== 'running' && server.lastActiveAt
                 ? t('publicDashboard.lastActive', { time: timeAgo(server.lastActiveAt, t) })
                 : undefined
             }
-          />
+          >
+            {server.maintenanceSoon && (
+              <div
+                className="mt-3 pt-3 border-t border-line font-mono text-[11px]"
+                style={{ color: 'var(--yellow)' }}
+              >
+                ⚠{' '}
+                {t(
+                  server.maintenanceSoon.action === 'stop'
+                    ? 'publicDashboard.maintenanceStop'
+                    : 'publicDashboard.maintenanceRestart',
+                  { minutes: maintenanceMinutes(server.maintenanceSoon.at) }
+                )}
+              </div>
+            )}
+          </ServerCard>
         ))}
 
         {loading && Array.from({ length: 6 }, (_, i) => <ServerCardSkeleton key={i} />)}
 
         {!loading && filtered.length === 0 && (
           <span className="font-mono text-xs text-ink-3">
-            {t('publicDashboard.noMatch', { search })}
+            {search ? t('publicDashboard.noMatch', { search }) : t('publicDashboard.noServers')}
           </span>
         )}
       </div>

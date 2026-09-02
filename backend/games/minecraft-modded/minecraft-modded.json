@@ -1,0 +1,62 @@
+{
+  "id": "minecraft-modded",
+  "name": "Minecraft (Modded)",
+  "description": "Modded Java Edition server, built from a local Dockerfile with your mod jars baked into the image instead of pulled from a public one. Drop mods into games/minecraft-modded/mods/ and rebuild to update the pack.",
+  "imageSource": "local",
+  "image": "serverdock/minecraft-modded",
+  "dataMount": "/data",
+  "query": null,
+  "ports": [
+    {
+      "host": 25566,
+      "container": 25565,
+      "protocol": "tcp"
+    },
+    {
+      "host": 25556,
+      "container": 25556,
+      "protocol": "tcp"
+    }
+  ],
+  "environment": [
+    {
+      "key": "EULA",
+      "value": "TRUE",
+      "pinned": true
+    },
+    {
+      "key": "TYPE",
+      "value": "FABRIC",
+      "pinned": true
+    },
+    {
+      "key": "VERSION",
+      "value": "1.20.1",
+      "pinned": true
+    },
+    {
+      "key": "MEMORY",
+      "value": "8G",
+      "pinned": true
+    },
+    {
+      "key": "ONLINE_MODE",
+      "value": "FALSE",
+      "pinned": false
+    }
+  ],
+  "resources": {
+    "cpuLimit": null,
+    "memoryLimit": null
+  },
+  "rcon": {
+    "enabled": true,
+    "port": 25556,
+    "password": "changeme",
+    "listCommand": "list",
+    "commands": {
+      "broadcast": "say {message}"
+    }
+  },
+  "imageBuilt": true
+}

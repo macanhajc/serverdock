@@ -59,15 +59,28 @@ export function getDataPath(id) {
   return join(getDataRoot(), id, 'data');
 }
 
+// Serialize writes per game id. The merge itself happens inside the queued
+// job (not at call time) so a save queued behind another always merges onto
+// that earlier save's result instead of a stale in-memory snapshot — two
+// concurrent saveGame(id) calls (e.g. the scheduler's updateLastRun landing
+// while an admin edit is in flight) would otherwise silently lose one update.
+const writeChains = new Map();
+
 export async function saveGame(id, partialData) {
-  const game = getGame(id);
-  if (!game) throw new Error(`Game ${id} not found`);
-  const updated = { ...game, ...partialData };
-  const jsonPath = join(GAMES_DIR, id, `${id}.json`);
-  const tmpPath = `${jsonPath}.tmp`;
-  await writeFile(tmpPath, JSON.stringify(updated, null, 2), 'utf-8');
-  await rename(tmpPath, jsonPath);
-  const idx = games.findIndex((g) => g.id === id);
-  if (idx !== -1) games[idx] = updated;
-  return updated;
+  const prev = writeChains.get(id) ?? Promise.resolve();
+  const run = async () => {
+    const game = getGame(id);
+    if (!game) throw new Error(`Game ${id} not found`);
+    const updated = { ...game, ...partialData };
+    const jsonPath = join(GAMES_DIR, id, `${id}.json`);
+    const tmpPath = `${jsonPath}.tmp`;
+    await writeFile(tmpPath, JSON.stringify(updated, null, 2), 'utf-8');
+    await rename(tmpPath, jsonPath);
+    const idx = games.findIndex((g) => g.id === id);
+    if (idx !== -1) games[idx] = updated;
+    return updated;
+  };
+  const next = prev.then(run, run);
+  writeChains.set(id, next);
+  return next;
 }

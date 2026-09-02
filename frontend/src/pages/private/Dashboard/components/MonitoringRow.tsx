@@ -1,32 +1,36 @@
+import { memo } from "react";
 import { Play, RotateCw, Square, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Button, CopyButton, StatusBadge } from "../../../../components";
+import { Button, CopyButton, StatusBadge, Sparkline } from "../../../../components";
 import { UptimeTicker } from "../../../../components/core/UptimeTicker";
 import { fmtBytes, timeAgo, formatDate } from "../../../../utils/format";
 import { toUiStatus, IN_FLIGHT, gameHue, gameMark } from "../../../../utils/serverStatus";
 import { Server, ServerStats, PullProgress } from "../../../../types";
 
+type Action = 'start' | 'stop' | 'restart' | 'reset';
+
 interface MonitoringRowProps {
   server: Server;
   stats: ServerStats | undefined;
+  history?: { cpu: number[]; mem: number[] };
   pull?: PullProgress;
   navigate: (path: string) => void;
-  onStart: () => void;
-  onStop: () => void;
-  onRestart: () => void;
-  onWipe: () => void;
+  onAction: (id: string, action: Action) => void;
+  onWipeRequest: (id: string, name: string) => void;
   actionLoading: string | null | undefined;
 }
 
-export function MonitoringRow({
+// Memoized so a stats:update tick (~1/sec/server) only re-renders the row it
+// actually touches instead of the whole table — onAction/onWipeRequest/navigate
+// must stay referentially stable in the parent for this to take effect.
+export const MonitoringRow = memo(function MonitoringRow({
   server,
   stats,
+  history,
   pull,
   navigate,
-  onStart,
-  onStop,
-  onRestart,
-  onWipe,
+  onAction,
+  onWipeRequest,
   actionLoading,
 }: MonitoringRowProps) {
   const { t } = useTranslation();
@@ -80,7 +84,7 @@ export function MonitoringRow({
         </div>
       </td>
 
-      <td className="border-r border-line px-4 py-3.5">
+      <td className="border-r border-line px-4 py-3.5 text-center">
         <StatusBadge status={toUiStatus(status)}>{badgeLabel}</StatusBadge>
       </td>
 
@@ -103,16 +107,8 @@ export function MonitoringRow({
 
       <td className="border-r border-line px-4 py-3.5">
         {server.players !== null && server.players !== undefined ? (
-          <span className="font-mono text-xs text-ink">{server.players}</span>
-        ) : (
-          <span className="font-mono text-xs text-ink-3">—</span>
-        )}
-      </td>
-
-      <td className="border-r border-line px-4 py-3.5">
-        {isRunning && stats ? (
-          <span className="font-mono text-xs text-ink whitespace-nowrap">
-            {stats.cpu.toFixed(1)}%
+          <span className="font-mono text-xs text-ink" title={server.playerList ?? undefined}>
+            {server.players}
           </span>
         ) : (
           <span className="font-mono text-xs text-ink-3">—</span>
@@ -121,10 +117,30 @@ export function MonitoringRow({
 
       <td className="border-r border-line px-4 py-3.5">
         {isRunning && stats ? (
-          <span className="font-mono text-xs text-ink whitespace-nowrap text-ellipsis overflow-hidden block max-w-full">
-            {fmtBytes(stats.memUsed)}
-            {memMax ? ` / ${fmtBytes(memMax)}` : ' / - '}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-xs text-ink whitespace-nowrap">
+              {stats.cpu.toFixed(1)}%
+            </span>
+            {history && history.cpu.length > 1 && (
+              <Sparkline data={history.cpu} width={32} height={14} />
+            )}
+          </div>
+        ) : (
+          <span className="font-mono text-xs text-ink-3">—</span>
+        )}
+      </td>
+
+      <td className="border-r border-line px-4 py-3.5">
+        {isRunning && stats ? (
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-mono text-xs text-ink whitespace-nowrap text-ellipsis overflow-hidden">
+              {fmtBytes(stats.memUsed)}
+              {memMax ? ` / ${fmtBytes(memMax)}` : ' / - '}
+            </span>
+            {history && history.mem.length > 1 && (
+              <Sparkline data={history.mem} width={32} height={14} />
+            )}
+          </div>
         ) : (
           <span className="font-mono text-xs text-ink-3">—</span>
         )}
@@ -154,7 +170,7 @@ export function MonitoringRow({
 
       <td className="border-r border-line px-4 py-3.5">
         {server.connection ? (
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center justify-between gap-2 min-w-0">
             <span className="font-mono text-xs text-ink whitespace-nowrap text-ellipsis overflow-hidden min-w-0">
               {server.connection.host}:{server.connection.port}
             </span>
@@ -177,7 +193,7 @@ export function MonitoringRow({
             disabled={!isNotCreated || busy}
             title={t('adminDashboard.actStart')}
             aria-label={t('adminDashboard.actStart')}
-            onClick={(e) => act(e, onStart)}
+            onClick={(e) => act(e, () => onAction(id, 'start'))}
           >
             <Play size={12} />
           </Button>
@@ -188,7 +204,7 @@ export function MonitoringRow({
             disabled={!isRunning || busy}
             title={t('adminDashboard.actStop')}
             aria-label={t('adminDashboard.actStop')}
-            onClick={(e) => act(e, onStop)}
+            onClick={(e) => act(e, () => onAction(id, 'stop'))}
           >
             <Square size={12} />
           </Button>
@@ -198,7 +214,7 @@ export function MonitoringRow({
             disabled={!isRunning || busy}
             title={t('adminDashboard.actRestart')}
             aria-label={t('adminDashboard.actRestart')}
-            onClick={(e) => act(e, onRestart)}
+            onClick={(e) => act(e, () => onAction(id, 'restart'))}
           >
             <RotateCw size={12} />
           </Button>
@@ -209,7 +225,7 @@ export function MonitoringRow({
             disabled={busy}
             title={t('adminDashboard.actReset')}
             aria-label={t('adminDashboard.actReset')}
-            onClick={(e) => act(e, onWipe)}
+            onClick={(e) => act(e, () => onWipeRequest(id, name))}
           >
             <Trash2 size={12} />
           </Button>
@@ -217,4 +233,4 @@ export function MonitoringRow({
       </td>
     </tr>
   );
-}
+});

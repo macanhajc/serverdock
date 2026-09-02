@@ -1,4 +1,5 @@
 import { createReadStream } from 'fs';
+import { stat } from 'fs/promises';
 import { Router } from 'express';
 import { verifyToken } from '../middleware/auth.js';
 import { getGame, saveGame } from '../lib/gameLoader.js';
@@ -10,6 +11,7 @@ import {
   pruneBackups,
   getBackupPath,
 } from '../lib/backupManager.js';
+import { emitServerEvent } from '../lib/statusBus.js';
 
 const router = Router();
 
@@ -52,12 +54,19 @@ router.post('/:id', verifyToken, async (req, res) => {
 // GET /api/backups/:id/:backupId/download
 // Authorization header only — the frontend downloads via fetch + blob so the
 // JWT never lands in a URL (browser history / access logs).
-router.get('/:id/:backupId/download', verifyToken, (req, res) => {
+router.get('/:id/:backupId/download', verifyToken, async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
 
   const backupPath = getBackupPath(req.params.id, req.params.backupId);
   const filename = `${req.params.id}-${req.params.backupId}.tar.gz`;
+
+  try {
+    const { size } = await stat(backupPath);
+    res.setHeader('Content-Length', size);
+  } catch {
+    return res.status(404).json({ error: 'Backup file not found' });
+  }
 
   res.setHeader('Content-Type', 'application/gzip');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -70,13 +79,24 @@ router.get('/:id/:backupId/download', verifyToken, (req, res) => {
 });
 
 // POST /api/backups/:id/:backupId/restore
+// Broadcasts its outcome over the status room (like build_complete/failed) so
+// the admin has a completion signal that doesn't depend on the initiating
+// HTTP request still being connected — a large archive can take a while to
+// extract, and BackupTab's own "Restoring…" state is tied to that same request.
 router.post('/:id/:backupId/restore', verifyToken, async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
   try {
     const result = await restoreBackup(req.params.id, req.params.backupId);
+    emitServerEvent({ type: 'restore_complete', id: game.id, name: game.name });
     res.json({ ok: true, ...result });
   } catch (err) {
+    emitServerEvent({
+      type: 'restore_failed',
+      id: game.id,
+      name: game.name,
+      message: err.message,
+    });
     res.status(err.status ?? 500).json({ error: err.message ?? 'Restore failed' });
   }
 });

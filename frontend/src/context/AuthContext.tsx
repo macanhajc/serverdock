@@ -51,10 +51,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.setItem(SESSION_KEY, jwt);
     setToken(jwt);
     socket.auth = { token: jwt };
+    // A visitor browsing the public dashboard before logging in may already
+    // hold an unauthenticated connection (see socket.ts) — .connect() alone
+    // is a no-op on an already-open socket, so force a fresh handshake that
+    // actually carries the new auth.
+    if (socket.connected) socket.disconnect();
     socket.connect();
   }
 
   function logout() {
+    // Best-effort server-side revocation — local logout must still succeed if this fails
+    if (token) {
+      fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
     sessionStorage.removeItem(SESSION_KEY);
     setToken(null);
     socket.disconnect();

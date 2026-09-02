@@ -3,22 +3,68 @@
   "name": "SCUM",
   "description": "Open-world survival server (runs via Wine)",
   "imageSource": "public",
-  "image": "marcsbrooks/docker-scum-server:latest",
-  "dataMount": "/usr/games/Steam/steamapps/common/SCUM Server/SCUM/Saved",
-  "query": { "type": "a2s", "port": 27015 },
+  "image": "ghcr.io/evilolaf/scum:latest",
+  "dataMount": "/opt/scumserver",
+  "query": {
+    "type": "a2s",
+    "port": 27015
+  },
   "ports": [
-    { "host": 7777, "container": 7777, "protocol": "udp" },
-    { "host": 7778, "container": 7778, "protocol": "udp" },
-    { "host": 7779, "container": 7779, "protocol": "udp" },
-    { "host": 27015, "container": 27015, "protocol": "udp" }
+    {
+      "host": 7777,
+      "container": 7777,
+      "protocol": "udp"
+    },
+    {
+      "host": 7778,
+      "container": 7778,
+      "protocol": "udp"
+    },
+    {
+      "host": 7779,
+      "container": 7779,
+      "protocol": "udp"
+    },
+    {
+      "host": 27015,
+      "container": 27015,
+      "protocol": "udp"
+    }
   ],
   "environment": [
-    { "key": "GAMEPORT", "value": "7777", "pinned": false },
-    { "key": "QUERYPORT", "value": "27015", "pinned": false }
+    {
+      "key": "GAMEPORT",
+      "value": "7777",
+      "pinned": false
+    },
+    {
+      "key": "QUERYPORT",
+      "value": "27015",
+      "pinned": false
+    },
+    {
+      "key": "MAXPLAYERS",
+      "value": "32",
+      "pinned": false
+    },
+    {
+      "key": "ADDITIONALFLAGS",
+      "value": "",
+      "pinned": false
+    },
+    {
+      "key": "SKIP_UPDATE",
+      "value": "false",
+      "pinned": false
+    }
   ],
-  "rcon": { "enabled": false },
+  "rcon": {
+    "enabled": false
+  },
   "resources": {
     "cpuLimit": 4,
     "memoryLimit": 8192
-  }
+  },
+  "storeUrl": null,
+  "imageBuilt": true
 }

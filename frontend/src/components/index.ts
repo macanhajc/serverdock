@@ -12,3 +12,4 @@ export { Tabs } from './navigation/Tabs';
 export { ServerCard } from './data/ServerCard';
 export { ServerCardSkeleton } from './data/ServerCardSkeleton';
 export { LogLine, LogViewer } from './data/LogLine';
+export { Sparkline } from './data/Sparkline';

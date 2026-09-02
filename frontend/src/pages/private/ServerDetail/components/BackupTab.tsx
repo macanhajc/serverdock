@@ -51,6 +51,7 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
   const [confirmDelete, setConfirmDelete] = useState<BackupEntry | null>(null);
   const [confirmRestore, setConfirmRestore] = useState<BackupEntry | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
+  const [downloadPct, setDownloadPct] = useState<number | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -161,18 +162,32 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
     }
   }
 
-  // fetch + blob keeps the JWT in a header instead of a download URL
+  // fetch + blob keeps the JWT in a header instead of a download URL. Reading
+  // the stream manually (instead of res.blob()) lets us report progress from
+  // the Content-Length header against bytes received so far.
   async function downloadBackup(backup: BackupEntry) {
     setActionId(backup.id);
+    setDownloadPct(0);
     try {
       const res = await fetch(`/api/backups/${id}/${backup.id}/download`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) {
+      if (!res.ok || !res.body) {
         addToast(t('serverDetail.backupDownloadFailed'), 'error');
         return;
       }
-      const blob = await res.blob();
+      const total = Number(res.headers.get('Content-Length')) || 0;
+      const reader = res.body.getReader();
+      const chunks: BlobPart[] = [];
+      let received = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.byteLength;
+        if (total > 0) setDownloadPct(Math.min(99, Math.round((received / total) * 100)));
+      }
+      const blob = new Blob(chunks);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -183,6 +198,7 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
       addToast(t('serverDetail.backupDownloadFailed'), 'error');
     } finally {
       setActionId(null);
+      setDownloadPct(null);
     }
   }
 
@@ -290,7 +306,9 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <Button size="sm" onClick={() => downloadBackup(b)} disabled={busy}>
-                    {t('serverDetail.backupDownload')}
+                    {busy && downloadPct != null
+                      ? t('serverDetail.backupDownloading', { pct: downloadPct })
+                      : t('serverDetail.backupDownload')}
                   </Button>
                   <Button
                     size="sm"

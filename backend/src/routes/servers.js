@@ -5,20 +5,24 @@ import { verifyToken } from '../middleware/auth.js';
 import { getGames, getGame, GAMES_DIR } from '../lib/gameLoader.js';
 import {
   getEffectiveStatus,
+  getEffectiveStatuses,
   getContainerTimestamps,
   startContainer,
   stopContainer,
   restartContainer,
   resetContainer,
 } from '../lib/containers.js';
-import { getPlayers, setPlayers } from '../lib/playerQuery.js';
+import { getPlayers, setPlayers, getPlayerList, setPlayerList } from '../lib/playerQuery.js';
 import { getSelfIp } from '../lib/vpn/index.js';
 import { getSettings } from '../lib/settingsStore.js';
 import { getDirSizeCached } from '../lib/diskUtils.js';
 import { getDataPath } from '../lib/gameLoader.js';
 import { sendRconCommand } from '../lib/rcon.js';
+import { getScheduleNextRun } from '../lib/scheduler.js';
 
 const router = Router();
+
+const MAINTENANCE_LEAD_MS = 5 * 60_000;
 
 async function resolveHost() {
   const vpnIp = await getSelfIp();
@@ -26,10 +30,28 @@ async function resolveHost() {
   return vpnIp ?? (serverHost?.trim() || null) ?? process.env.SERVER_HOST ?? '127.0.0.1';
 }
 
-async function buildServerResponse(game, status) {
+// Soonest enabled restart/stop schedule firing within the lead window, or null.
+// Intentionally minimal — no label/cron/command, since this is served publicly.
+function getMaintenanceSoon(game) {
+  const now = Date.now();
+  let soonest = null;
+  for (const schedule of game.schedules ?? []) {
+    if (!schedule.enabled || (schedule.action !== 'restart' && schedule.action !== 'stop')) continue;
+    const nextRun = getScheduleNextRun(schedule.id);
+    if (!nextRun) continue;
+    const at = new Date(nextRun).getTime();
+    const delta = at - now;
+    if (delta <= 0 || delta > MAINTENANCE_LEAD_MS) continue;
+    if (!soonest || at < new Date(soonest.at).getTime()) {
+      soonest = { at: nextRun, action: schedule.action };
+    }
+  }
+  return soonest;
+}
+
+async function buildServerResponse(game, status, host) {
   const firstPort = game.ports?.[0];
-  const [host, diskUsed, { startedAt, lastActiveAt }] = await Promise.all([
-    resolveHost(),
+  const [diskUsed, { startedAt, lastActiveAt }] = await Promise.all([
     getDirSizeCached(getDataPath(game.id)),
     getContainerTimestamps(game.id),
   ]);
@@ -44,6 +66,7 @@ async function buildServerResponse(game, status) {
     storeUrl: game.storeUrl ?? null,
     status,
     players: getPlayers(game.id),
+    playerList: getPlayerList(game.id),
     connection: {
       host,
       port: firstPort?.host ?? null,
@@ -62,18 +85,27 @@ async function buildServerResponse(game, status) {
     startedAt,
     lastActiveAt,
     query: game.query ?? null,
-    rcon: game.rcon ? { enabled: !!game.rcon.enabled, port: game.rcon.port ?? null } : null,
+    // password/listCommand stay server-side (this response is public, no JWT) — but
+    // the broadcast template is just command syntax, not a secret, so it's safe to
+    // expose and is what the admin Console tab needs to show the quick-action button.
+    rcon: game.rcon
+      ? { enabled: !!game.rcon.enabled, port: game.rcon.port ?? null, commands: game.rcon.commands ?? null }
+      : null,
+    maintenanceSoon: getMaintenanceSoon(game),
   };
 }
 
 // GET /api/servers — public
 router.get('/', async (req, res) => {
   const games = getGames();
+  // Host is the same for every game — resolve it once instead of once per
+  // game (resolveHost() shells out to `netbird status` on a cache miss).
+  const [statuses, host] = await Promise.all([
+    getEffectiveStatuses(games.map((g) => g.id)),
+    resolveHost(),
+  ]);
   const results = await Promise.all(
-    games.map(async (game) => {
-      const status = await getEffectiveStatus(game.id);
-      return buildServerResponse(game, status);
-    })
+    games.map((game) => buildServerResponse(game, statuses.get(game.id) ?? 'not_created', host))
   );
   res.json(results);
 });
@@ -82,8 +114,8 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
-  const status = await getEffectiveStatus(game.id);
-  res.json(await buildServerResponse(game, status));
+  const [status, host] = await Promise.all([getEffectiveStatus(game.id), resolveHost()]);
+  res.json(await buildServerResponse(game, status, host));
 });
 
 const AVATAR_MIME_BY_EXT = {
@@ -126,6 +158,7 @@ router.post('/:id/stop', verifyToken, async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
   setPlayers(game.id, null); // before the stop so the final emission carries no players
+  setPlayerList(game.id, null);
   await stopContainer(game.id);
   res.json({ status: 'stopped' });
 });
@@ -155,8 +188,10 @@ router.post('/:id/rcon', verifyToken, async (req, res) => {
   try {
     const response = await sendRconCommand(game, command.trim().slice(0, 1024));
     res.json({ response: response || '(no response)' });
-  } catch {
-    res.status(503).json({ error: 'RCON connection failed — check that RCON is enabled in the game config' });
+  } catch (err) {
+    // sendRconCommand throws specific, actionable messages (auth failed, port
+    // not published, timed out, …) — surface those instead of one generic string.
+    res.status(503).json({ error: err.message || 'RCON connection failed' });
   }
 });
 
@@ -168,6 +203,7 @@ router.post('/:id/reset', verifyToken, async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
   setPlayers(game.id, null);
+  setPlayerList(game.id, null);
   await resetContainer(game.id);
   res.json({ status: 'not_created' });
 });

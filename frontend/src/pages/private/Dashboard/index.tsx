@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
@@ -9,6 +9,7 @@ import { STABLE, sortOnlineFirst } from '../../../utils/serverStatus';
 import type { Server, ServerStats, HostDisk, PullProgress, VpnStatus } from '../../../types';
 import { GlobalStatsCard } from './components/GlobalStatsCard';
 import { OsInfoCard } from './components/OsInfoCard';
+import { NetBirdCard } from './components/NetBirdCard';
 import { MonitoringRowSkeleton } from './components/MonitoringRowSkeleton';
 import { MonitoringRow } from './components/MonitoringRow';
 import { Button } from '../../../components';
@@ -25,6 +26,9 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [serverStats, setServerStats] = useState<Record<string, ServerStats>>({});
+  const [serverStatsHistory, setServerStatsHistory] = useState<
+    Record<string, { cpu: number[]; mem: number[] }>
+  >({});
   const [pullProgress, setPullProgress] = useState<Record<string, PullProgress>>({});
   const [loading, setLoading] = useState<Record<string, string>>({});
   const [confirmWipe, setConfirmWipe] = useState<{ id: string; name: string } | null>(null);
@@ -40,7 +44,27 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
     uptime: number;
   } | null>(null);
   const [usersOnline, setUsersOnline] = useState(0);
+  const [vpnStatus, setVpnStatus] = useState<VpnStatus | null>(null);
+  const [vpnLoaded, setVpnLoaded] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const subscribedIds = useRef(new Set<string>());
+  // Fallback per action in case the socket status:update never arrives (e.g. a
+  // dropped connection right after a successful action) — without this the
+  // button stays stuck in a loading state forever.
+  const actionTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  useEffect(
+    () => () => {
+      Object.values(actionTimers.current).forEach(clearTimeout);
+    },
+    []
+  );
+
+  const clearActionTimer = useCallback((id: string) => {
+    clearTimeout(actionTimers.current[id]);
+    delete actionTimers.current[id];
+  }, []);
 
   function loadServers() {
     fetch('/api/servers')
@@ -56,7 +80,42 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
       });
   }
 
-  async function callAction(id: string, action: 'start' | 'stop' | 'restart' | 'reset') {
+  // Config + Dockerfile only — no data/, matches the shape produced by a
+  // game's own Export button. Lands on the edit form so the admin can review
+  // it (and rebuild the image / re-upload an avatar) before it goes live.
+  async function handleImportFile(file: File | null) {
+    if (!file) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      let bundle: unknown;
+      try {
+        bundle = JSON.parse(text);
+      } catch {
+        addToast(t('adminDashboard.importInvalidFile'), 'error');
+        return;
+      }
+      const res = await fetch('/api/games/import', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(bundle),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        addToast(t('adminDashboard.importSuccess', { id: data.id }));
+        navigate(`/admin/servers/${data.id}/edit`);
+      } else {
+        addToast(data.error ?? t('adminDashboard.importFailed'), 'error');
+      }
+    } catch {
+      addToast(t('adminDashboard.importFailed'), 'error');
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
+  }
+
+  const callAction = useCallback(async (id: string, action: 'start' | 'stop' | 'restart' | 'reset') => {
     setLoading((prev) => ({ ...prev, [id]: action }));
     const labels: Record<string, string> = {
       start: t('adminDashboard.actionStart'),
@@ -83,6 +142,23 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
             })
             .catch(() => {});
         }
+        clearActionTimer(id);
+        actionTimers.current[id] = setTimeout(() => {
+          fetch(`/api/servers/${id}`)
+            .then((r) => (r.ok ? r.json() : Promise.reject()))
+            .then((updated: Server) => {
+              setServers((prev) => prev.map((s) => (s.id === id ? { ...s, ...updated } : s)));
+            })
+            .catch(() => {})
+            .finally(() => {
+              delete actionTimers.current[id];
+              setLoading((prev) => {
+                const n = { ...prev };
+                delete n[id];
+                return n;
+              });
+            });
+        }, 15_000);
       } else {
         const data = await res.json().catch(() => ({}));
         addToast(data.error ?? `${action} failed`, 'error');
@@ -100,7 +176,12 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
         return n;
       });
     }
-  }
+  }, [token, t, addToast, clearActionTimer]);
+
+  const onWipeRequest = useCallback(
+    (id: string, name: string) => setConfirmWipe({ id, name }),
+    []
+  );
 
   useEffect(() => {
     function onStatusUpdate({
@@ -129,6 +210,7 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
         });
       }
       if (STABLE.includes(status)) {
+        clearActionTimer(id);
         setLoading((prev) => {
           const n = { ...prev };
           delete n[id];
@@ -153,8 +235,23 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
       });
     }
 
+    // Player count/list can change without a status transition (players
+    // joining a still-running server) — see statusBus.emitPlayers.
+    function onPlayersUpdate({
+      id,
+      players,
+      playerList,
+    }: {
+      id: string;
+      players: number | null;
+      playerList: string | null;
+    }) {
+      setServers((prev) => prev.map((s) => (s.id === id ? { ...s, players, playerList } : s)));
+    }
+
     socket.on('status:update', onStatusUpdate);
     socket.on('status:all', onStatusAll);
+    socket.on('players:update', onPlayersUpdate);
     socket.on('pull:progress', onPullProgress);
     // join:status refreshes the snapshot; room membership is kept by ServerEventsBridge
     socket.emit('join:status');
@@ -189,6 +286,7 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
     return () => {
       socket.off('status:update', onStatusUpdate);
       socket.off('status:all', onStatusAll);
+      socket.off('players:update', onPlayersUpdate);
       socket.off('pull:progress', onPullProgress);
     };
   }, []);
@@ -202,8 +300,10 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then((data: VpnStatus) => {
           setUsersOnline(data.peers.filter((p) => p.online && !p.name.includes("proxy")).length);
+          setVpnStatus(data);
+          setVpnLoaded(true);
         })
-        .catch(() => {});
+        .catch(() => setVpnLoaded(true));
     }
     fetchVpnStatus();
     const interval = setInterval(fetchVpnStatus, 30_000);
@@ -225,6 +325,11 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
         socket.emit('leave:stats', { id });
         subscribedIds.current.delete(id);
         setServerStats((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        setServerStatsHistory((prev) => {
           const next = { ...prev };
           delete next[id];
           return next;
@@ -283,6 +388,7 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
         </div>
 
         {hostOs && <OsInfoCard hostOs={hostOs} />}
+        <NetBirdCard status={vpnStatus} loaded={vpnLoaded} navigate={navigate} />
 
         <GlobalStatsCard
           servers={servers}
@@ -294,9 +400,9 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
         />
       </div>
 
-      <div className="border-t border-line mx-6 my-6 container" />
+      <div className="border-t border-line mx-6 my-6" />
 
-      <div className="px-6 pb-16 container overflow-hidden">
+      <div className="px-6 pb-8 container overflow-hidden">
         <div className="mb-2">
           <span className="text-base text-ink-2 uppercase font-mono">{t('servers.title')}</span>
         </div>
@@ -328,7 +434,21 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
             </div>
           </div>
 
-          <div className='flex flex-1 justify-end'>
+          <div className='flex flex-1 justify-end gap-2'>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => handleImportFile(e.target.files?.[0] ?? null)}
+            />
+            <Button
+              variant="ghost"
+              disabled={importing}
+              onClick={() => importInputRef.current?.click()}
+            >
+              {importing ? t('adminDashboard.importing') : t('adminDashboard.importGame')}
+            </Button>
             <Button variant='primary' onClick={() => navigate('/admin/servers/new')}>
               {t("adminDashboard.addGame")}
             </Button>
@@ -342,14 +462,14 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
           >
             <colgroup>
               <col style={{ width: 220 }} />
-              <col style={{ width: 100 }} />
+              <col style={{ width: 120 }} />
               <col style={{ width: 140 }} />
               <col style={{ width: 100 }} />
               <col style={{ width: 100 }} />
               <col style={{ width: 180 }} />
               <col style={{ width: 110 }} />
               <col style={{ width: 230 }} />
-              <col style={{ width: 220 }} />
+              <col style={{ width: 230 }} />
               <col style={{ width: 190 }} />
             </colgroup>
             <thead>
@@ -386,13 +506,12 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
                     key={server.id}
                     server={server}
                     stats={serverStats[server.id]}
+                    history={serverStatsHistory[server.id]}
                     pull={pullProgress[server.id]}
                     navigate={navigate}
                     actionLoading={loading[server.id]}
-                    onStart={() => callAction(server.id, 'start')}
-                    onStop={() => callAction(server.id, 'stop')}
-                    onRestart={() => callAction(server.id, 'restart')}
-                    onWipe={() => setConfirmWipe({ id: server.id, name: server.name })}
+                    onAction={callAction}
+                    onWipeRequest={onWipeRequest}
                   />
                 ))}
 

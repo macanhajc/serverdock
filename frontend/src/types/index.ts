@@ -52,6 +52,7 @@ export interface Server {
   imageSource: 'public' | 'local';
   imageBuilt?: boolean;
   players: number | null;
+  playerList?: string | null;
   connection: Connection | null;
   pinnedEnv: EnvVar[];
   diskUsed?: number;
@@ -63,9 +64,16 @@ export interface Server {
   query?: { type: string; port?: number } | null;
   resources?: { cpuLimit?: number | null; memoryLimit?: number | null };
   environment?: EnvVar[];
-  rcon?: { enabled: boolean; port?: number | null; password?: string };
+  rcon?: {
+    enabled: boolean;
+    port?: number | null;
+    password?: string;
+    listCommand?: string;
+    commands?: { broadcast?: string };
+  };
   startedAt?: string | null;
   lastActiveAt?: string | null;
+  maintenanceSoon?: { at: string; action: string } | null;
 }
 
 export interface ServerStats {
@@ -196,5 +204,10 @@ export interface GameTemplate {
   ports?: Array<{ host: number; container: number; protocol: Protocol }>;
   environment?: EnvVar[];
   query?: { type: string; port?: number };
-  rcon?: { enabled: boolean; port?: number; password?: string };
+  rcon?: {
+    enabled: boolean;
+    port?: number;
+    password?: string;
+    commands?: { broadcast?: string };
+  };
 }

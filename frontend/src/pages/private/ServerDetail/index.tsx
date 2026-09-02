@@ -9,6 +9,7 @@ import { Tabs } from '../../../components/navigation/Tabs';
 import { StatusBadge } from '../../../components/core/StatusBadge';
 import { Button } from '../../../components/core/Button';
 import { ConfirmModal } from '../../../components/core/ConfirmModal';
+import { Sparkline } from '../../../components/data/Sparkline';
 import { STABLE, IN_FLIGHT, toUiStatus, gameHue, gameMark, storeLabel } from '../../../utils/serverStatus';
 import { fmtBytes } from '../../../utils/format';
 import type { Server, ServerStats, LogLine, PullProgress } from '../../../types';
@@ -39,38 +40,6 @@ function appendCapped(prev: LogLine[], items: LogLine[]): LogLine[] {
   return next.length > MAX_LOG_LINES ? next.slice(next.length - MAX_LOG_LINES) : next;
 }
 
-// ─── Sparkline ────────────────────────────────────────────────────────────────
-
-interface SparklineProps {
-  data: number[];
-  width?: number;
-  height?: number;
-}
-
-function Sparkline({ data, width = 160, height = 28 }: SparklineProps) {
-  if (data.length < 2) return <div style={{ width, height }} className="shrink-0" />;
-  const max = Math.max(...data, 1);
-  const pts = data
-    .map((v, i) => {
-      const x = ((i / (data.length - 1)) * width).toFixed(1);
-      const y = (height - (v / max) * (height - 2) - 1).toFixed(1);
-      return `${x},${y}`;
-    })
-    .join(' ');
-  return (
-    <svg width={width} height={height} className="shrink-0 opacity-70">
-      <polyline
-        points={pts}
-        fill="none"
-        stroke="var(--accent)"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 // ─── ServerDetail ─────────────────────────────────────────────────────────────
 
 export default function ServerDetail() {
@@ -87,6 +56,12 @@ export default function ServerDetail() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [pull, setPull] = useState<PullProgress | null>(null);
   const prevStatus = useRef<string>('running');
+  // Fallback in case the socket status:update never arrives (e.g. a dropped
+  // connection right after a successful action) — without this the action
+  // buttons stay stuck disabled forever.
+  const actionTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => () => clearTimeout(actionTimer.current), []);
 
   const [tab, setTab] = useState('info');
 
@@ -102,6 +77,7 @@ export default function ServerDetail() {
 
   const [stats, setStats] = useState<ServerStats | null>(null);
   const [cpuHistory, setCpuHistory] = useState<number[]>([]);
+  const [memHistory, setMemHistory] = useState<number[]>([]);
   const [statsOpen, setStatsOpen] = useState(false);
 
   // ── load server ───────────────────────────────────────────────────────────
@@ -138,17 +114,22 @@ export default function ServerDetail() {
           : prev
       );
       if (status !== 'pulling') setPull(null);
-      if (STABLE.includes(status)) setAL(null);
+      if (STABLE.includes(status)) {
+        clearTimeout(actionTimer.current);
+        setAL(null);
+      }
       if (status === 'running' && was !== 'running') {
         socket.emit('leave:logs', { id });
         socket.emit('join:logs', { id });
         socket.emit('leave:stats', { id });
         socket.emit('join:stats', { id });
         setCpuHistory([]);
+        setMemHistory([]);
       }
       if (was === 'running' && status !== 'running') {
         setStats(null);
         setCpuHistory([]);
+        setMemHistory([]);
       }
     }
     function onLogLine({
@@ -200,12 +181,28 @@ export default function ServerDetail() {
           { ts: nowTs(), level: 'DEBUG', line: tRef.current('serverDetail.containerStopped') },
         ])
       );
+      clearTimeout(actionTimer.current);
       setAL(null);
     }
 
     function onPullProgress({ id: pid, phase, percent }: PullProgress & { id: string }) {
       if (pid !== id) return;
       setPull({ phase, percent });
+    }
+
+    // Player count/list can change without a status transition (players
+    // joining a still-running server) — see statusBus.emitPlayers.
+    function onPlayersUpdate({
+      id: pid,
+      players,
+      playerList,
+    }: {
+      id: string;
+      players: number | null;
+      playerList: string | null;
+    }) {
+      if (pid !== id) return;
+      setServer((prev) => (prev ? { ...prev, players, playerList } : prev));
     }
 
     // Server-side streams die with the connection — re-join after a reconnect
@@ -215,6 +212,7 @@ export default function ServerDetail() {
     }
 
     socket.on('status:update', onStatusUpdate);
+    socket.on('players:update', onPlayersUpdate);
     socket.on('log:line', onLogLine);
     socket.on('log:history', onLogHistory);
     socket.on('log:end', onLogEnd);
@@ -226,6 +224,7 @@ export default function ServerDetail() {
 
     return () => {
       socket.off('status:update', onStatusUpdate);
+      socket.off('players:update', onPlayersUpdate);
       socket.off('log:line', onLogLine);
       socket.off('log:history', onLogHistory);
       socket.off('log:end', onLogEnd);
@@ -250,6 +249,10 @@ export default function ServerDetail() {
       setStats({ cpu, memUsed, memLimit, netInRate, netOutRate });
       setCpuHistory((prev) => {
         const next = [...prev, cpu];
+        return next.length > 60 ? next.slice(next.length - 60) : next;
+      });
+      setMemHistory((prev) => {
+        const next = [...prev, memUsed];
         return next.length > 60 ? next.slice(next.length - 60) : next;
       });
     }
@@ -288,6 +291,14 @@ export default function ServerDetail() {
       });
       if (res.ok) {
         addToast(labels[action] ?? 'Done');
+        clearTimeout(actionTimer.current);
+        actionTimer.current = setTimeout(() => {
+          fetch(`/api/servers/${id}`, { headers: { Authorization: `Bearer ${token}` } })
+            .then((r) => (r.ok ? r.json() : Promise.reject()))
+            .then((updated: Server) => setServer((prev) => (prev ? { ...prev, ...updated } : prev)))
+            .catch(() => {})
+            .finally(() => setAL(null));
+        }, 15_000);
       } else {
         const data = await res.json().catch(() => ({}));
         setActionError(data.error ?? `${action} failed`);
@@ -484,6 +495,7 @@ export default function ServerDetail() {
                 ) : (
                   <span className="font-mono text-xs text-ink">{fmtBytes(stats.memUsed)}</span>
                 )}
+                <Sparkline data={memHistory} />
               </div>
 
               <div className="flex items-center gap-3">
@@ -523,7 +535,7 @@ export default function ServerDetail() {
 
       {/* ── Tab content ───────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-hidden">
-        {tab === 'info' && <InfoTab server={server} id={id!} />}
+        {tab === 'info' && <InfoTab server={server} id={id!} token={token} />}
         {/* Console stays mounted so its filter/command/RCON state survives tab
             switches; the output itself lives in `lines` on the parent */}
         <div className={tab === 'console' ? 'h-full' : 'hidden'}>

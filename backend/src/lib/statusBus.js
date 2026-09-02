@@ -75,3 +75,14 @@ export function emitCrashAlert(payload) {
 export function emitDockerStatus(available) {
   getIo()?.to('status').emit('docker:status', { available });
 }
+
+export function emitDiskStatus(payload) {
+  getIo()?.to('status').emit('disk:status', payload);
+}
+
+// Player count/list can change without a status transition (players joining
+// while the container just keeps running) — pollStatus emits this on an
+// actual change so clients don't need to poll GET /api/servers to see it.
+export function emitPlayers(id, players, playerList) {
+  getIo()?.to('status').emit('players:update', { id, players, playerList });
+}

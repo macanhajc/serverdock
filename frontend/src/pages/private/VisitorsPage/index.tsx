@@ -4,9 +4,17 @@ import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import { Button } from '../../../components/core/Button';
 import { PageHeader } from '../../../components/core/PageHeader';
+import { ConfirmModal } from '../../../components/core/ConfirmModal';
 import { formatDate } from '../../../utils/format';
 import { VisitorRowSkeleton } from './components/VisitorRowSkeleton';
 import type { Visitor, BlockedIp } from '../../../types';
+
+interface PendingConfirm {
+  type: 'remove' | 'block';
+  id: string;
+  username: string;
+  ip?: string;
+}
 
 export default function VisitorsPage() {
   const { t } = useTranslation();
@@ -15,6 +23,7 @@ export default function VisitorsPage() {
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [blockedIps, setBlockedIps] = useState<BlockedIp[]>([]);
+  const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
 
   const fetchVisitors = useCallback(
     () =>
@@ -99,6 +108,14 @@ export default function VisitorsPage() {
     } catch {
       addToast(t('visitors.couldNotReach'), 'error');
     }
+  }
+
+  function handleConfirm() {
+    if (!confirm) return;
+    const { type, id, username, ip } = confirm;
+    setConfirm(null);
+    if (type === 'remove') removeVisitor(id, username);
+    else blockVisitor(id, username, ip);
   }
 
   async function unblockIp(ip: string) {
@@ -225,7 +242,9 @@ export default function VisitorsPage() {
                           <Button
                             size="sm"
                             variant="danger"
-                            onClick={() => blockVisitor(v.id, v.username, v.ip)}
+                            onClick={() =>
+                              setConfirm({ type: 'block', id: v.id, username: v.username, ip: v.ip })
+                            }
                           >
                             {t('visitors.block')}
                           </Button>
@@ -233,7 +252,7 @@ export default function VisitorsPage() {
                         <Button
                           size="sm"
                           variant="danger"
-                          onClick={() => removeVisitor(v.id, v.username)}
+                          onClick={() => setConfirm({ type: 'remove', id: v.id, username: v.username })}
                         >
                           {t('visitors.remove')}
                         </Button>
@@ -289,6 +308,21 @@ export default function VisitorsPage() {
           </div>
         )}
       </div>
+
+      {confirm && (
+        <ConfirmModal
+          title={t(confirm.type === 'remove' ? 'visitors.confirmRemoveTitle' : 'visitors.confirmBlockTitle')}
+          message={t(
+            confirm.type === 'remove' ? 'visitors.confirmRemoveMessage' : 'visitors.confirmBlockMessage',
+            { username: confirm.username }
+          )}
+          confirmLabel={t(
+            confirm.type === 'remove' ? 'visitors.confirmRemoveBtn' : 'visitors.confirmBlockBtn'
+          )}
+          onConfirm={handleConfirm}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
     </>
   );
 }

@@ -33,6 +33,7 @@ export function ServerEventsBridge() {
   const { t } = useTranslation();
   const { addToast } = useToast();
   const [dockerDown, setDockerDown] = useState(false);
+  const [diskLow, setDiskLow] = useState(false);
 
   useEffect(() => {
     function joinStatus() {
@@ -74,11 +75,24 @@ export function ServerEventsBridge() {
         case 'build_complete':
           addToast(t('events.buildComplete', { name: evt.name }), 'success');
           break;
+        case 'restore_failed':
+          addToast(t('events.restoreFailed', { name: evt.name, message: evt.message }), 'error');
+          break;
+        case 'restore_complete':
+          addToast(t('events.restoreComplete', { name: evt.name }), 'success');
+          break;
+        case 'resource_high':
+          addToast(t('events.resourceHigh', { name: evt.name, message: evt.message }), 'error');
+          break;
       }
     }
 
     function onDockerStatus({ available }: { available: boolean }) {
       setDockerDown(!available);
+    }
+
+    function onDiskStatus({ low }: { low: boolean }) {
+      setDiskLow(low);
     }
 
     function onSocketError({ message }: { message?: string } = {}) {
@@ -89,6 +103,7 @@ export function ServerEventsBridge() {
     socket.on('crash:alert', onCrash);
     socket.on('server:event', onServerEvent);
     socket.on('docker:status', onDockerStatus);
+    socket.on('disk:status', onDiskStatus);
     socket.on('error', onSocketError);
     joinStatus();
 
@@ -105,22 +120,33 @@ export function ServerEventsBridge() {
       socket.off('crash:alert', onCrash);
       socket.off('server:event', onServerEvent);
       socket.off('docker:status', onDockerStatus);
+      socket.off('disk:status', onDiskStatus);
       socket.off('error', onSocketError);
     };
   }, [t, addToast]);
 
-  if (!dockerDown) return null;
+  const banners = [
+    dockerDown && { key: 'docker', text: t('events.dockerDown') },
+    diskLow && { key: 'disk', text: t('events.diskLow') },
+  ].filter((b): b is { key: string; text: string } => !!b);
+
+  if (banners.length === 0) return null;
 
   return (
-    <div
-      className="fixed bottom-0 left-52 right-0 z-40 flex items-center gap-2 px-4 py-2 font-mono text-[11.5px] text-red border-t"
-      style={{
-        background: 'color-mix(in oklab, var(--red) 10%, var(--bg-1))',
-        borderColor: 'color-mix(in oklab, var(--red) 40%, transparent)',
-      }}
-    >
-      <span>⚠</span>
-      <span>{t('events.dockerDown')}</span>
+    <div className="fixed bottom-0 left-52 right-0 z-40 flex flex-col-reverse">
+      {banners.map((b) => (
+        <div
+          key={b.key}
+          className="flex items-center gap-2 px-4 py-2 font-mono text-[11.5px] text-red border-t"
+          style={{
+            background: 'color-mix(in oklab, var(--red) 10%, var(--bg-1))',
+            borderColor: 'color-mix(in oklab, var(--red) 40%, transparent)',
+          }}
+        >
+          <span>⚠</span>
+          <span>{b.text}</span>
+        </div>
+      ))}
     </div>
   );
 }

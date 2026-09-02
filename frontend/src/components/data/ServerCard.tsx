@@ -1,6 +1,22 @@
-import { HTMLAttributes, ReactNode } from 'react';
+import { HTMLAttributes, ReactNode, memo } from 'react';
 import { StatusBadge } from '../core/StatusBadge';
+import { CopyButton } from '../core/CopyButton';
 import { storeLabel } from '../../utils/serverStatus';
+
+interface ConnectionInfo {
+  host: string;
+  port: number | null;
+}
+
+function ConnectCell({ host, port }: ConnectionInfo) {
+  const addr = port != null ? `${host}:${port}` : host;
+  return (
+    <span className="flex items-center gap-2">
+      <span>{addr}</span>
+      <CopyButton text={addr} className="text-sm" />
+    </span>
+  );
+}
 
 interface PinnedEnvItem {
   key: string;
@@ -48,7 +64,7 @@ interface ServerCardProps extends HTMLAttributes<HTMLElement> {
   engine?: string;
   status?: string;
   players?: ReactNode;
-  ip?: ReactNode;
+  connection?: ConnectionInfo | null;
   lastActive?: ReactNode;
   hue?: number;
   mark?: string;
@@ -62,12 +78,15 @@ interface ServerCardProps extends HTMLAttributes<HTMLElement> {
   className?: string;
 }
 
-export function ServerCard({
+// Memoized — the public dashboard's status:update ticks rebuild the servers
+// array, and without this every card would re-render even when only one
+// server's row actually changed.
+export const ServerCard = memo(function ServerCard({
   name,
   engine,
   status = 'offline',
   players,
-  ip,
+  connection,
   lastActive,
   hue = 210,
   mark,
@@ -143,7 +162,17 @@ export function ServerCard({
 
         <div className="mt-4 flex justify-between gap-4">
           <Meta k="Players" v={players} />
-          <Meta k="Connect" v={ip} dim />
+          <Meta
+            k="Connect"
+            v={
+              connection ? (
+                <ConnectCell host={connection.host} port={connection.port} />
+              ) : (
+                <span className="font-mono text-xs text-ink-3">—</span>
+              )
+            }
+            dim
+          />
         </div>
 
         {children}
@@ -156,7 +185,7 @@ export function ServerCard({
       </div>
     </article>
   );
-}
+});
 
 function Meta({ k, v, dim }: { k: string; v?: ReactNode; dim?: boolean }) {
   return (

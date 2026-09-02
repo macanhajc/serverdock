@@ -19,7 +19,14 @@
     { "key": "RUST_SERVER_WORLDSIZE", "value": "3500", "pinned": false },
     { "key": "RUST_RCON_WEB", "value": "1", "pinned": false }
   ],
-  "rcon": { "enabled": true, "port": 28016, "password": "changeme" },
+  "rcon": {
+    "enabled": true,
+    "port": 28016,
+    "password": "changeme",
+    "commands": {
+      "broadcast": "say {message}"
+    }
+  },
   "resources": {
     "cpuLimit": 4,
     "memoryLimit": 8192

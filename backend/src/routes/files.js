@@ -1,6 +1,6 @@
 import { createReadStream } from 'fs';
 import { readdir, stat, readFile, writeFile, rename, realpath, open, rm, mkdir } from 'fs/promises';
-import { join, dirname, basename, resolve as resolvePath } from 'path';
+import { join, dirname, basename, resolve as resolvePath, sep } from 'path';
 import { Router } from 'express';
 import multer from 'multer';
 import { verifyToken } from '../middleware/auth.js';
@@ -18,7 +18,7 @@ const MAX_FILE_SIZE = 512 * 1024; // 512 KB
 // --- Path sandbox helpers ---
 
 function withinSandbox(root, p) {
-  return p === root || p.startsWith(root + '/');
+  return p === root || p.startsWith(root + sep);
 }
 
 // Resolve clientPath against sandboxRoot using pure path math (no FS access).

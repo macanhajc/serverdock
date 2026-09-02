@@ -22,12 +22,12 @@
   "environment": [
     {
       "key": "SteamServerName",
-      "value": "My Abiotic Factor Server",
+      "value": "My_Abiotic",
       "pinned": true
     },
     {
       "key": "ServerPassword",
-      "value": "changeme",
+      "value": "123123",
       "pinned": true
     },
     {

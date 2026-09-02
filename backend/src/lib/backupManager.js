@@ -1,6 +1,6 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { mkdir, rm, rename, readdir, readFile, writeFile, unlink, access } from 'fs/promises';
+import { mkdir, rm, rename, readdir, readFile, writeFile, unlink, access, stat } from 'fs/promises';
 import { join, dirname } from 'path';
 import { randomUUID } from 'crypto';
 import { getDataRoot, getDataPath, getGame } from './gameLoader.js';
@@ -13,11 +13,24 @@ export function getBackupsDir(gameId) {
   return join(getDataRoot(), gameId, 'backups');
 }
 
+// Backup ids are always server-generated UUIDs (see createBackup). Rejecting
+// anything else here — before it reaches a path join — closes off path
+// traversal through a crafted :backupId route param (e.g. `../../etc`).
+const BACKUP_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function assertValidBackupId(backupId) {
+  if (!BACKUP_ID_RE.test(backupId)) {
+    throw Object.assign(new Error('Invalid backup id'), { status: 400 });
+  }
+}
+
 export function getBackupPath(gameId, backupId) {
+  assertValidBackupId(backupId);
   return join(getBackupsDir(gameId), `${backupId}.tar.gz`);
 }
 
 function getSidecarPath(gameId, backupId) {
+  assertValidBackupId(backupId);
   return join(getBackupsDir(gameId), `${backupId}.json`);
 }
 
@@ -57,14 +70,13 @@ export async function createBackup(gameId, label) {
 
   await execFileAsync('tar', ['-czf', backupPath, '-C', dataDir, '.']);
 
-  const { stdout } = await execFileAsync('du', ['-b', backupPath]);
-  const size = parseInt(stdout.split('\t')[0], 10);
+  const { size } = await stat(backupPath);
 
   const entry = {
     id,
     ...(label?.trim() ? { label: label.trim() } : {}),
     createdAt: new Date().toISOString(),
-    size: isNaN(size) ? 0 : size,
+    size,
   };
 
   await writeFile(sidecarPath, JSON.stringify(entry, null, 2), 'utf-8');

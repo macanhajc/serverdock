@@ -65,3 +65,11 @@ export function queryA2S(port, timeoutMs = 3000) {
 const cache = new Map();
 export const getPlayers = (id) => cache.get(id) ?? null;
 export const setPlayers = (id, v) => cache.set(id, v);
+
+// In-process RCON player-list cache: gameId → raw command response text | null.
+// Whatever the game's own listCommand prints — there's no universal format to
+// parse across titles, so this is shown as-is rather than turned into a
+// structured name list.
+const listCache = new Map();
+export const getPlayerList = (id) => listCache.get(id) ?? null;
+export const setPlayerList = (id, v) => listCache.set(id, v);

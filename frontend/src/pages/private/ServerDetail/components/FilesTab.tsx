@@ -1,11 +1,37 @@
 import { useState, useEffect, useRef, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import CodeMirror, { keymap, type Extension } from '@uiw/react-codemirror';
+import { json } from '@codemirror/lang-json';
+import { yaml } from '@codemirror/lang-yaml';
+import { StreamLanguage } from '@codemirror/language';
+import { properties } from '@codemirror/legacy-modes/mode/properties';
 import { useToast } from '../../../../context/ToastContext';
 import { Button } from '../../../../components/core/Button';
 import { ConfirmModal } from '../../../../components/core/ConfirmModal';
 import { formatSize } from '../../../../utils/format';
+import { filesEditorTheme } from '../../../../utils/codeMirrorTheme';
 import type { FileEntry, OpenFile } from '../../../../types';
+
+// Highlighting for the file types people actually edit here; anything else
+// still gets CodeMirror's line numbers/search/folding, just no coloring.
+function languageExtension(filename: string): Extension[] {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'json':
+      return [json()];
+    case 'yml':
+    case 'yaml':
+      return [yaml()];
+    case 'properties':
+    case 'conf':
+    case 'cfg':
+    case 'ini':
+      return [StreamLanguage.define(properties)];
+    default:
+      return [];
+  }
+}
 
 // ─── FileItem ─────────────────────────────────────────────────────────────────
 
@@ -199,8 +225,6 @@ export function FilesTab({ id, token, editable }: FilesTabProps) {
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
   const [creating, setCreating] = useState<'file' | 'directory' | null>(null);
   const [createName, setCreateName] = useState('');
-  const gutterRef = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     fetch(`/api/files/${id}?path=${encodeURIComponent(currentPath)}`, {
@@ -274,18 +298,15 @@ export function FilesTab({ id, token, editable }: FilesTabProps) {
     }
   }
 
-  function onEditorKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-      e.preventDefault();
-      if (fileDirty) saveFile();
-    }
-  }
-
-  function syncScroll() {
-    if (gutterRef.current && editorRef.current) {
-      gutterRef.current.scrollTop = editorRef.current.scrollTop;
-    }
-  }
+  const saveKeymap = keymap.of([
+    {
+      key: 'Mod-s',
+      run: () => {
+        if (fileDirty) saveFile();
+        return true;
+      },
+    },
+  ]);
 
   async function uploadFiles(fileList: File[]) {
     if (!fileList.length || !editable) return;
@@ -672,24 +693,16 @@ export function FilesTab({ id, token, editable }: FilesTabProps) {
             </div>
           )}
 
-          <div className="flex flex-1 overflow-auto min-h-0">
-            <div
-              ref={gutterRef}
-              className="flex-none py-4 px-3 text-right font-mono text-[12.5px] leading-[1.7] text-[#444] select-none border-r border-line overflow-hidden bg-[#0c0c0c] min-w-12"
-            >
-              {fileLines.map((_, i) => (
-                <div key={i}>{i + 1}</div>
-              ))}
-            </div>
-            <textarea
-              ref={editorRef}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <CodeMirror
               value={fileContent}
-              onChange={(e) => setFileContent(e.target.value)}
-              onScroll={syncScroll}
-              onKeyDown={onEditorKeyDown}
+              onChange={(value) => setFileContent(value)}
+              height="100%"
+              style={{ height: '100%', fontSize: '12.5px' }}
+              theme={filesEditorTheme}
               readOnly={!editable}
-              spellCheck={false}
-              className="flex-1 py-4 px-4 font-mono text-[12.5px] leading-[1.7] text-[#c8c8c8] bg-[#0c0c0c] resize-none outline-none border-0 min-h-0"
+              basicSetup={{ highlightActiveLine: editable }}
+              extensions={[...languageExtension(openFile.name), saveKeymap]}
             />
           </div>
         </div>
