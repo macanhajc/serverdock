@@ -12,6 +12,7 @@ import {
 } from '../lib/visitorStore.js';
 import { isIpBlocked, blockIp, unblockIp, getBlockedIps } from '../lib/blocklistStore.js';
 import { getSettings } from '../lib/settingsStore.js';
+import { getVpnStatus } from '../lib/vpn/index.js';
 
 const router = Router();
 
@@ -62,9 +63,26 @@ router.post('/identify', async (req, res) => {
   res.status(201).json({ id: visitor.id, username: visitor.username, token: visitor.token });
 });
 
-// GET /api/visitors — admin only
-router.get('/', verifyToken, (_req, res) => {
-  res.json(getVisitors().map((v) => ({ ...v, blocked: isIpBlocked(v.ip) })));
+// GET /api/visitors — admin only. Visitors reach this VPN-gated server as
+// netbird peers, so their tracked IP doubles as a peer address — match it
+// against the current peer list to surface each visitor's device name and
+// live online status.
+router.get('/', verifyToken, async (_req, res) => {
+  const { peers } = await getVpnStatus();
+  const peerByIp = new Map(peers.filter((p) => p.ip).map((p) => [p.ip, p]));
+
+  res.json(
+    getVisitors().map((v) => {
+      const peer = v.ip ? peerByIp.get(v.ip) : undefined;
+      return {
+        ...v,
+        blocked: isIpBlocked(v.ip),
+        peer: peer
+          ? { name: peer.name, online: peer.online, os: peer.os, lastSeen: peer.lastSeen }
+          : null,
+      };
+    })
+  );
 });
 
 // GET /api/visitors/blocklist — admin only. Lists blocked IPs directly, since

@@ -1,4 +1,4 @@
-import { Component, ReactNode, ErrorInfo } from 'react';
+import { Component, ReactNode, ErrorInfo, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
@@ -6,6 +6,7 @@ import i18n from './i18n';
 
 import PublicDashboard from './pages/public/Dashboard';
 import Auth from './pages/auth';
+import Setup from './pages/setup';
 import Blocked from './pages/public/Blocked';
 import PrivateDashboard from './pages/private';
 
@@ -47,25 +48,72 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   return isAuthenticated ? <>{children}</> : <Navigate to="/auth" replace />;
 }
 
+// First-run gate: while no admin exists yet, every route redirects to
+// /setup; once one exists, /setup redirects away. The initial value comes
+// from the server once per page load, but completing setup flips it to
+// false locally (via onSetupComplete) — otherwise the gate below would
+// bounce a just-registered admin from /admin straight back to /setup,
+// since it wouldn't know setup had finished until the next full reload.
+function SetupGate({ needsSetup, children }: { needsSetup: boolean; children: ReactNode }) {
+  return needsSetup ? <Navigate to="/setup" replace /> : <>{children}</>;
+}
+
+function SetupRoute({ needsSetup, onSetupComplete }: { needsSetup: boolean; onSetupComplete: () => void }) {
+  return needsSetup ? <Setup onSetupComplete={onSetupComplete} /> : <Navigate to="/auth" replace />;
+}
+
 export default function App() {
+  const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/setup-status')
+      .then((r) => (r.ok ? r.json() : { needsSetup: false }))
+      .then((data) => setNeedsSetup(!!data.needsSetup))
+      .catch(() => setNeedsSetup(false));
+  }, []);
+
+  if (needsSetup === null) {
+    return <div className="min-h-screen bg-bg" />;
+  }
+
   return (
     <AuthProvider>
       <ToastProvider>
         <BrowserRouter>
           <Routes>
             <Route path="*" element={<Navigate to="/" replace />} />
-            <Route path="/" element={<PublicDashboard />} />
-            <Route path="/auth" element={<Auth />} />
+            <Route
+              path="/setup"
+              element={<SetupRoute needsSetup={needsSetup} onSetupComplete={() => setNeedsSetup(false)} />}
+            />
+            <Route
+              path="/"
+              element={
+                <SetupGate needsSetup={needsSetup}>
+                  <PublicDashboard />
+                </SetupGate>
+              }
+            />
+            <Route
+              path="/auth"
+              element={
+                <SetupGate needsSetup={needsSetup}>
+                  <Auth />
+                </SetupGate>
+              }
+            />
             <Route path="/blocked" element={<Blocked />} />
 
             <Route
               path="/admin/*"
               element={
-                <ProtectedRoute>
-                  <ErrorBoundary>
-                    <PrivateDashboard />
-                  </ErrorBoundary>
-                </ProtectedRoute>
+                <SetupGate needsSetup={needsSetup}>
+                  <ProtectedRoute>
+                    <ErrorBoundary>
+                      <PrivateDashboard />
+                    </ErrorBoundary>
+                  </ProtectedRoute>
+                </SetupGate>
               }
             />
           </Routes>

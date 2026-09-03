@@ -1,5 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  Check,
+  Copy,
+  ExternalLink,
+  Refresh,
+  WarningDiamond,
+  X,
+} from 'pixelarticons/react';
 import { CopyButton } from '../../../../components/core/CopyButton';
 import { UptimeTicker } from '../../../../components/core/UptimeTicker';
 import { copyText } from '../../../../utils/clipboard';
@@ -42,9 +50,10 @@ function InfoRow({ label, value, mono, suffix, copyable }: InfoRowProps) {
       {copyable && (
         <button
           onClick={handleCopy}
-          className="opacity-0 group-hover:opacity-100 font-mono text-[11px] text-ink-3 hover:text-ink px-2 py-0.5 border border-line bg-bg-2 cursor-pointer transition-opacity shrink-0"
+          className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 font-mono text-[11px] text-ink-3 hover:text-ink px-2 py-0.5 border border-line bg-bg-2 cursor-pointer transition-opacity shrink-0"
         >
-          {copied ? '✓' : t('common.copy')}
+          {copied ? <Check width={10} height={10} /> : <Copy width={10} height={10} />}
+          {copied ? '' : t('common.copy')}
         </button>
       )}
     </div>
@@ -114,17 +123,22 @@ function UpdateCheckRow({ id, token }: { id: string; token: string | null }) {
 
   let label: string | null = null;
   let color = 'var(--ink-3)';
+  let ResultIcon: typeof WarningDiamond | null = null;
   if (result) {
     if (result.updateAvailable === true) {
       label = t('serverDetail.updateAvailable');
       color = 'var(--yellow)';
+      ResultIcon = WarningDiamond;
     } else if (result.updateAvailable === false) {
       label = t('serverDetail.upToDate');
       color = 'var(--green)';
+      ResultIcon = Check;
     } else if (result.reason === 'not_pulled') {
       label = t('serverDetail.imageNotPulled');
+      ResultIcon = X;
     } else {
       label = t('serverDetail.updateCheckFailed');
+      ResultIcon = X;
     }
   }
 
@@ -136,15 +150,17 @@ function UpdateCheckRow({ id, token }: { id: string; token: string | null }) {
 
       <span className="flex-1 min-w-0 px-4 py-2.5 flex items-center gap-3">
         {label && (
-          <span className="capitalize font-mono text-xs" style={{ color }}>
+          <span className="inline-flex items-center gap-1.5 capitalize font-mono text-xs" style={{ color }}>
+            {ResultIcon && <ResultIcon width={12} height={12} />}
             {label}
           </span>
         )}
         <button
           onClick={check}
           disabled={checking}
-          className="font-mono text-[11px] text-ink-3 hover:text-ink px-2 py-0.5 border border-line bg-bg-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-1.5 font-mono text-[11px] text-ink-3 hover:text-ink px-2 py-0.5 border border-line bg-bg-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
         >
+          <Refresh width={11} height={11} />
           {checking ? t('common.loading') : t('serverDetail.checkForUpdates')}
         </button>
       </span>
@@ -226,7 +242,15 @@ export function InfoTab({ server, id, token }: InfoTabProps) {
           <section className='-mt-2'>
             <SectionTitle>{t('gameForm.fieldStoreUrl')}</SectionTitle>
             <div className="border border-line bg-bg-1 px-4 py-3">
-              <a href={server.storeUrl} target="_blank" className="underline font-mono text-sm text-ink-2 leading-relaxed m-0">{server.storeUrl}</a>
+              <a
+                href={server.storeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 underline font-mono text-sm text-ink-2 leading-relaxed m-0"
+              >
+                {server.storeUrl}
+                <ExternalLink width={12} height={12} />
+              </a>
             </div>
           </section>
         )}

@@ -20,7 +20,7 @@ export function LangSwitcher({ className = '' }: LangSwitcherProps) {
   const active = i18n.language;
 
   return (
-    <div className={`flex items-center gap-1 ${className}`}>
+    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
       {LANGS.map((lang) => (
         <button
           key={lang.code}

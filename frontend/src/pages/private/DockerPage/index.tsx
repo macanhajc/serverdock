@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ChevronDown, ChevronUp, Inbox, Refresh, Trash } from 'pixelarticons/react';
 import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import { Button } from '../../../components/core/Button';
@@ -134,6 +135,7 @@ export default function DockerPage() {
           </button>
           <div className="ml-auto flex items-center pb-2">
             <Button size="sm" onClick={fetchData}>
+              <Refresh width={12} height={12} className="mr-1.5" />
               {t('network.refresh')}
             </Button>
           </div>
@@ -185,7 +187,10 @@ export default function DockerPage() {
         {loaded && tab === 'images' && (
           <>
             {images.length === 0 ? (
-              <span className="font-mono text-xs text-ink-3">{t('docker.noImages')}</span>
+              <div className="flex items-center gap-2 font-mono text-xs text-ink-3">
+                <Inbox width={14} height={14} />
+                {t('docker.noImages')}
+              </div>
             ) : (
               <div className="border border-line bg-bg-1 overflow-x-auto">
                 <table className="w-full border-collapse text-sm">
@@ -233,6 +238,7 @@ export default function DockerPage() {
                                 })
                               }
                             >
+                              <Trash width={12} height={12} className="mr-1.5" />
                               {t('common.delete')}
                             </Button>
                           )}
@@ -249,7 +255,10 @@ export default function DockerPage() {
         {loaded && tab === 'containers' && (
           <>
             {containers.length === 0 ? (
-              <span className="font-mono text-xs text-ink-3">{t('docker.noContainers')}</span>
+              <div className="flex items-center gap-2 font-mono text-xs text-ink-3">
+                <Inbox width={14} height={14} />
+                {t('docker.noContainers')}
+              </div>
             ) : (
               <div className="border border-line bg-bg-1 overflow-x-auto">
                 <table className="w-full border-collapse text-sm">
@@ -289,6 +298,7 @@ export default function DockerPage() {
                                 })
                               }
                             >
+                              <Trash width={12} height={12} className="mr-1.5" />
                               {t('common.delete')}
                             </Button>
                           )}
@@ -341,8 +351,9 @@ function Th({
     >
       {children}
       {onSort && (
-        <span className="inline-block w-3 ml-1 text-ink-3">
-          {sortDir === 'asc' ? '▲' : sortDir === 'desc' ? '▼' : ''}
+        <span className="inline-block w-3 ml-1 text-ink-3 align-[-2px]">
+          {sortDir === 'asc' && <ChevronUp width={11} height={11} />}
+          {sortDir === 'desc' && <ChevronDown width={11} height={11} />}
         </span>
       )}
     </th>

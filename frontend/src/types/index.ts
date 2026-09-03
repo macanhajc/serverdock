@@ -121,6 +121,10 @@ export interface Visitor {
   firstSeen?: string;
   lastSeen?: string;
   blocked: boolean;
+  // Matched by IP against the current netbird peer list — null when the
+  // visitor's IP has no corresponding peer (e.g. netbird is down, or the
+  // peer was removed since).
+  peer?: { name: string; online: boolean; os?: string; lastSeen?: string } | null;
 }
 
 export interface BlockedIp {

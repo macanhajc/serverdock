@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { StatusDot } from '../../NetworkPage/components/StatusDot';
+import { ChevronRight } from 'pixelarticons/react';
+import { StatusDot } from '../../../../components/core/StatusDot';
 import type { VpnStatus } from '../../../../types';
 
 interface NetBirdCardProps {
@@ -57,8 +58,9 @@ export function NetBirdCard({ status, loaded, navigate }: NetBirdCardProps) {
         </>
       )}
 
-      <span className="ml-auto font-mono text-xs text-ink-3 shrink-0">
-        {t('adminDashboard.netbirdViewNetwork')} →
+      <span className="ml-auto inline-flex items-center gap-1 font-mono text-xs text-ink-3 shrink-0">
+        {t('adminDashboard.netbirdViewNetwork')}
+        <ChevronRight width={12} height={12} />
       </span>
     </div>
   );

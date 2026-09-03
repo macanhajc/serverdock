@@ -5,5 +5,14 @@
   "discordWebhookUrl": "",
   "vapidPublicKey": "BCMHBz3cUPS5DpWFzZJZ6NAqX2EWCy3Bkl9Oc9qRXcfU01FNvNbUc8Ho9Kk-bP018cXFaLdo4JWTBBPsw6bN14g",
   "vapidPrivateKey": "IjlT1e2f9a49fIfpHngYTG4SS_1gpiHHjR98AdrmIJQ",
-  "pushSubscriptions": []
+  "pushSubscriptions": [
+    {
+      "endpoint": "https://updates.push.services.mozilla.com/wpush/v2/gAAAAABqmYsEVE5QnDKzzjqBSes2hoiVKDK1J85_cBSYyldMjV8T1jqMZ4y2SRRChQYQe4O0KuSykDbiadOr1i2WLyTKlapNCuJf6HdMrmXBORNKMRfMzaKkpB7HatC-I_XPK0OPRSt_4P_zZUaaeWWQHU6jiS_gA4LguPAiAHdzJhcaL09uVAg",
+      "expirationTime": null,
+      "keys": {
+        "auth": "z6NR3mcHeWrdgbc48dIo2g",
+        "p256dh": "BMIgNwle634azjp_lfMxzJkRwReOZer8MztPjNAf6PuVRdIYEQKsCpshuqnavxVwve8_JtblqYSyPAbIXNFVLGw"
+      }
+    }
+  ]
 }

@@ -1,6 +1,14 @@
 import { useState, useEffect, useMemo, useRef, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
+import {
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Send as SendIcon,
+  Trash,
+} from 'pixelarticons/react';
 import socket from '../../../../socket';
 import { Button } from '../../../../components/core/Button';
 import { Toggle } from '../../../../components/core/Toggle';
@@ -320,7 +328,7 @@ export function ConsoleTab({
                     title={t('serverDetail.searchPrev')}
                     className="font-mono text-xs text-ink-3 hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed px-1.5 py-1 border border-line bg-bg-2 cursor-pointer"
                   >
-                    ↑
+                    <ChevronUp width={11} height={11} />
                   </button>
                   <button
                     onClick={() => goToMatch(1)}
@@ -328,7 +336,7 @@ export function ConsoleTab({
                     title={t('serverDetail.searchNext')}
                     className="font-mono text-xs text-ink-3 hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed px-1.5 py-1 border border-line bg-bg-2 cursor-pointer"
                   >
-                    ↓
+                    <ChevronDown width={11} height={11} />
                   </button>
                 </>
               )}
@@ -354,9 +362,15 @@ export function ConsoleTab({
                 onClick={copyLogs}
                 disabled={filteredLines.length === 0}
               >
+                {copied ? (
+                  <Check width={12} height={12} className="mr-1.5" />
+                ) : (
+                  <Copy width={12} height={12} className="mr-1.5" />
+                )}
                 {copied ? t('serverDetail.copied') : t('serverDetail.copyLogs')}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setLines([])}>
+                <Trash width={12} height={12} className="mr-1.5" />
                 {t('serverDetail.clear')}
               </Button>
             </div>
@@ -436,8 +450,9 @@ export function ConsoleTab({
             <button
               onClick={sendConsoleCommand}
               disabled={!isRunning || !canWrite || !consoleInput.trim()}
-              className="font-mono text-xs text-ink-3 hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed px-4 py-3 border-l border-line cursor-pointer shrink-0"
+              className="inline-flex items-center gap-1.5 font-mono text-xs text-ink-3 hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed px-4 py-3 border-l border-line cursor-pointer shrink-0"
             >
+              <SendIcon width={12} height={12} />
               Send
             </button>
           </div>
@@ -497,9 +512,10 @@ export function ConsoleTab({
             <button
               onClick={sendRcon}
               disabled={!isRunning || !canWrite || !rconInput.trim() || rconSending}
-              className="font-mono text-xs text-ink-3 hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed px-4 py-3 border-l border-line cursor-pointer shrink-0"
+              className="inline-flex items-center gap-1.5 font-mono text-xs text-ink-3 hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed px-4 py-3 border-l border-line cursor-pointer shrink-0"
             >
-              {rconSending ? '…' : 'Send'}
+              {rconSending ? '…' : <SendIcon width={12} height={12} />}
+              {rconSending ? '' : 'Send'}
             </button>
           </div>
         </>

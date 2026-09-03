@@ -54,6 +54,10 @@ export function countSuperAdmins() {
   return db.prepare("SELECT COUNT(*) AS n FROM admins WHERE role = 'super_admin'").get().n;
 }
 
+export function countAdmins() {
+  return db.prepare('SELECT COUNT(*) AS n FROM admins').get().n;
+}
+
 export function getPermissions(adminId) {
   return db
     .prepare('SELECT permission FROM admin_permissions WHERE admin_id = ?')
@@ -87,6 +91,27 @@ export async function createAdmin({ username, password, role = 'admin', permissi
   // super_admin has everything implicitly — no rows needed for it
   if (role !== 'super_admin') setPermissions(id, permissions);
   return getAdminById(id);
+}
+
+// First-run web setup: creates the initial super_admin, but only if none
+// exists yet. The count-check and insert run inside one synchronous
+// transaction with no `await` in between, so two simultaneous setup
+// requests can't both succeed — better-sqlite3 transactions run
+// synchronously and Node is single-threaded, so nothing can interleave
+// between the check and the insert. Returns null if setup was already done.
+export async function createFirstAdmin({ username, password }) {
+  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  const id = randomUUID();
+  const createdAt = new Date().toISOString();
+  const created = db.transaction(() => {
+    const { n } = db.prepare('SELECT COUNT(*) AS n FROM admins').get();
+    if (n > 0) return false;
+    db.prepare(
+      'INSERT INTO admins (id, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)'
+    ).run(id, username, passwordHash, 'super_admin', createdAt);
+    return true;
+  })();
+  return created ? getAdminById(id) : null;
 }
 
 export async function updateAdminPassword(id, password) {

@@ -1,11 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  CircleInfo,
+  Refresh,
+  Server,
+  Users,
+  WarningDiamond,
+} from 'pixelarticons/react';
 import { useAuth } from '../../../context/AuthContext';
 import { PageHeader } from '../../../components/core/PageHeader';
 import { CopyButton } from '../../../components/core/CopyButton';
 import { timeAgo } from '../../../utils/format';
 import type { VpnStatus, VpnSelf, VpnPeer } from '../../../types';
-import { StatusDot } from './components/StatusDot';
+import { StatusDot } from '../../../components/core/StatusDot';
 import { SelfCardSkeleton } from './components/SelfCardSkeleton';
 import { PeerRowSkeleton } from './components/PeerRowSkeleton';
 
@@ -51,8 +58,9 @@ export default function NetworkPage() {
       >
         <button
           onClick={fetchStatus}
-          className="ml-auto font-mono text-xs text-ink-3 border border-line px-3 py-1.5 cursor-pointer hover:text-ink hover:bg-bg-1"
+          className="ml-auto inline-flex items-center gap-1.5 font-mono text-xs text-ink-3 border border-line px-3 py-1.5 cursor-pointer hover:text-ink hover:bg-bg-1"
         >
+          <Refresh width={12} height={12} />
           {t('network.refresh')}
         </button>
       </PageHeader>
@@ -60,23 +68,26 @@ export default function NetworkPage() {
       <div className="px-6 py-5 flex flex-col gap-6 container">
         {/* This server */}
         <section>
-          <h2 className="m-0 mb-3 text-sm font-semibold tracking-[.02em] text-ink-2 uppercase font-mono">
+          <h2 className="m-0 mb-3 flex items-center gap-2 text-sm font-semibold tracking-[.02em] text-ink-2 uppercase font-mono">
+            <Server width={14} height={14} />
             {t('network.thisServer')}
           </h2>
           {!loaded && <SelfCardSkeleton />}
           {loaded && error && (
             <div
-              className="border px-4 py-3 font-mono text-xs text-red"
+              className="flex items-center gap-2 border px-4 py-3 font-mono text-xs text-red"
               style={{
                 background: 'color-mix(in oklab, var(--red) 8%, transparent)',
                 borderColor: 'color-mix(in oklab, var(--red) 35%, transparent)',
               }}
             >
+              <WarningDiamond width={13} height={13} className="shrink-0" />
               {error} — {t('network.vpnCheck')}
             </div>
           )}
           {loaded && !error && !self && (
-            <div className="border border-line bg-bg-1 px-4 py-3 font-mono text-xs text-ink-3">
+            <div className="flex items-center gap-2 border border-line bg-bg-1 px-4 py-3 font-mono text-xs text-ink-3">
+              <WarningDiamond width={13} height={13} className="shrink-0 text-yellow" />
               {t('network.vpnInactive')} <code className="text-ink">sudo netbird up</code>{' '}
               {t('network.vpnInactiveSuffix')}
             </div>
@@ -114,7 +125,8 @@ export default function NetworkPage() {
 
         {/* Peers */}
         <section>
-          <h2 className="m-0 mb-3 text-sm font-semibold tracking-[.02em] text-ink-2 uppercase font-mono">
+          <h2 className="m-0 mb-3 flex items-center gap-2 text-sm font-semibold tracking-[.02em] text-ink-2 uppercase font-mono">
+            <Users width={14} height={14} />
             {t('network.peers')}
           </h2>
 
@@ -140,7 +152,8 @@ export default function NetworkPage() {
           )}
 
           {loaded && peers.length === 0 && !error && (
-            <div className="border border-line bg-bg-1 px-4 py-3 font-mono text-xs text-ink-3">
+            <div className="flex items-center gap-2 border border-line bg-bg-1 px-4 py-3 font-mono text-xs text-ink-3">
+              <Users width={14} height={14} className="shrink-0" />
               {t('network.noPeers')}{' '}
               <span className="text-ink">{t('network.vpnDashboard')}</span>.
             </div>
@@ -190,7 +203,8 @@ export default function NetworkPage() {
 
         {/* How to join */}
         <section>
-          <h2 className="m-0 mb-3 text-sm font-semibold tracking-[.02em] text-ink-2 uppercase font-mono">
+          <h2 className="m-0 mb-3 flex items-center gap-2 text-sm font-semibold tracking-[.02em] text-ink-2 uppercase font-mono">
+            <CircleInfo width={14} height={14} />
             {t('network.howToInvite')}
           </h2>
           <div className="border border-line bg-bg-1 px-4 py-4 flex flex-col gap-3 font-mono text-xs text-ink-2">

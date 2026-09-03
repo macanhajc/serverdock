@@ -192,3 +192,12 @@ body {
 #root {
   min-height: 100dvh;
 }
+
+/* ── Sticky-column elevation ──────────────────────────
+   Applied to a horizontally-scrollable container; once scrolled off
+   the left edge, its sticky-left-0 cells (table headers + first
+   column) pick up a shadow to read as "floating" above the content
+   passing beneath them. */
+.is-scrolled .sticky.left-0 {
+  box-shadow: 6px 0 24px -6px rgba(0, 0, 0, 0.3);
+}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { WarningDiamond } from 'pixelarticons/react';
 import socket from '../../socket';
 import { useToast } from '../../context/ToastContext';
 
@@ -143,7 +144,7 @@ export function ServerEventsBridge() {
             borderColor: 'color-mix(in oklab, var(--red) 40%, transparent)',
           }}
         >
-          <span>⚠</span>
+          <WarningDiamond width={13} height={13} className="shrink-0" />
           <span>{b.text}</span>
         </div>
       ))}

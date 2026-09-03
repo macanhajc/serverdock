@@ -1,5 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  Bell,
+  BellOff,
+  Close,
+  Database,
+  Save,
+  Send,
+  Server,
+  Trash,
+  Users,
+  WarningDiamond,
+} from 'pixelarticons/react';
 import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import { Button } from '../../../components/core/Button';
@@ -241,14 +253,17 @@ export default function SettingsPage() {
     <div className="flex relative flex-col h-screen">
       <PageHeader title={t('settings.title')} subtitle="/admin/settings" />
 
-      <div className="flex-1 pb-24 px-6 py-6 flex flex-col gap-8">
+      <div className="flex-1 min-h-0 overflow-y-auto pb-24 px-6 py-6 flex flex-col gap-8">
         {!loaded ? (
           <SettingsPageSkeleton />
         ) : (
           <>
             {/* Notifications */}
             <section>
-              <h3 className="m-0 mb-1 text-sm font-bold">{t('settings.notificationsTitle')}</h3>
+              <h3 className="m-0 mb-1 flex items-center gap-2 text-sm font-bold">
+                <Bell width={14} height={14} />
+                {t('settings.notificationsTitle')}
+              </h3>
               <p className="m-0 mb-5 text-xs text-ink-3">{t('settings.notificationsDesc')}</p>
 
               <div className="flex flex-col gap-6">
@@ -275,7 +290,14 @@ export default function SettingsPage() {
                       disabled={!canManage || !saved.discordWebhookUrl || discordTesting}
                       onClick={handleTestDiscord}
                     >
-                      {discordTesting ? '…' : t('settings.discordTest')}
+                      {discordTesting ? (
+                        '…'
+                      ) : (
+                        <>
+                          <Send width={12} height={12} className="mr-1.5" />
+                          {t('settings.discordTest')}
+                        </>
+                      )}
                     </Button>
                   </div>
                 </div>
@@ -304,7 +326,14 @@ export default function SettingsPage() {
                       {pushSubscription ? (
                         <>
                           <Button size="sm" disabled={pushTesting} onClick={handleTestPush}>
-                            {pushTesting ? '…' : t('settings.pushTest')}
+                            {pushTesting ? (
+                              '…'
+                            ) : (
+                              <>
+                                <Bell width={12} height={12} className="mr-1.5" />
+                                {t('settings.pushTest')}
+                              </>
+                            )}
                           </Button>
                           <Button
                             size="sm"
@@ -312,6 +341,7 @@ export default function SettingsPage() {
                             disabled={pushBusy}
                             onClick={handlePushUnsubscribe}
                           >
+                            <BellOff width={12} height={12} className="mr-1.5" />
                             {t('settings.pushUnsubscribe')}
                           </Button>
                         </>
@@ -322,7 +352,14 @@ export default function SettingsPage() {
                           disabled={pushBusy || !vapidPublicKey}
                           onClick={handlePushSubscribe}
                         >
-                          {pushBusy ? '…' : t('settings.pushSubscribe')}
+                          {pushBusy ? (
+                            '…'
+                          ) : (
+                            <>
+                              <Bell width={12} height={12} className="mr-1.5" />
+                              {t('settings.pushSubscribe')}
+                            </>
+                          )}
                         </Button>
                       )}
                     </div>
@@ -333,7 +370,10 @@ export default function SettingsPage() {
 
             {/* Server Identity */}
             <section className="border-t border-line pt-6">
-              <h3 className="m-0 mb-1 text-sm font-bold">{t('settings.serverHostTitle')}</h3>
+              <h3 className="m-0 mb-1 flex items-center gap-2 text-sm font-bold">
+                <Server width={14} height={14} />
+                {t('settings.serverHostTitle')}
+              </h3>
               <p className="m-0 mb-5 text-xs text-ink-3">{t('settings.serverHostDesc')}</p>
 
               <div className="flex flex-col gap-4 border border-dashed bg-line/10 border-line-2 p-4">
@@ -361,7 +401,10 @@ export default function SettingsPage() {
             {/* Visitor Registration */}
             <section>
               <div className="border-t border-line pt-6">
-                <h3 className="m-0 mb-1 text-sm font-bold">{t('settings.registrationTitle')}</h3>
+                <h3 className="m-0 mb-1 flex items-center gap-2 text-sm font-bold">
+                  <Users width={14} height={14} />
+                  {t('settings.registrationTitle')}
+                </h3>
                 <p className="m-0 mb-5 text-xs text-ink-3">{t('settings.registrationDesc')}</p>
 
                 <div className="flex flex-col gap-4 border border-dashed bg-line/10 border-line-2 p-4">
@@ -380,7 +423,7 @@ export default function SettingsPage() {
                         border: '1px solid color-mix(in oklab, var(--yellow) 30%, transparent)',
                       }}
                     >
-                      <span className="shrink-0">⚠</span>
+                      <WarningDiamond width={13} height={13} className="shrink-0" />
                       <span>{t('settings.registrationClosedWarning')}</span>
                     </div>
                   )}
@@ -391,7 +434,10 @@ export default function SettingsPage() {
             {/* Data Storage */}
             <section>
               <div className="border-t border-line pt-6">
-                <h3 className="m-0 mb-1 text-sm font-bold">{t('settings.dataStorageTitle')}</h3>
+                <h3 className="m-0 mb-1 flex items-center gap-2 text-sm font-bold">
+                  <Database width={14} height={14} />
+                  {t('settings.dataStorageTitle')}
+                </h3>
                 <p className="m-0 mb-5 text-xs text-ink-3">{t('settings.dataStorageDesc')}</p>
 
                 <div className="flex flex-col gap-4 border border-dashed bg-line/10 border-line-2 p-4">
@@ -409,8 +455,9 @@ export default function SettingsPage() {
                     <button
                       type="button"
                       onClick={() => setDataRoot('')}
-                      className="self-start font-mono text-xs text-ink-3 underline cursor-pointer bg-transparent border-0 p-0 hover:text-ink"
+                      className="self-start inline-flex items-center gap-1 font-mono text-xs text-ink-3 underline cursor-pointer bg-transparent border-0 p-0 hover:text-ink"
                     >
+                      <Close width={11} height={11} />
                       {t('settings.dataRootClear')}
                     </button>
                   )}
@@ -438,7 +485,7 @@ export default function SettingsPage() {
                       border: '1px solid color-mix(in oklab, var(--yellow) 30%, transparent)',
                     }}
                   >
-                    <span className="shrink-0">⚠</span>
+                    <WarningDiamond width={13} height={13} className="shrink-0" />
                     <span>{t('settings.migrationWarning')}</span>
                   </div>
                 </div>
@@ -448,7 +495,8 @@ export default function SettingsPage() {
             {/* Danger Zone */}
             <section>
               <div className="border-t border-line pt-6">
-                <h3 className="m-0 mb-1 text-sm font-bold text-red">
+                <h3 className="m-0 mb-1 flex items-center gap-2 text-sm font-bold text-red">
+                  <WarningDiamond width={14} height={14} />
                   {t('settings.dangerZoneTitle')}
                 </h3>
                 <p className="m-0 mb-5 text-xs text-ink-3">{t('settings.dangerZoneDesc')}</p>
@@ -473,6 +521,7 @@ export default function SettingsPage() {
                       disabled={wiping}
                       onClick={() => setConfirmWipe(true)}
                     >
+                      <Trash width={12} height={12} className="mr-1.5" />
                       {wiping ? t('settings.wiping') : t('settings.wipeAllBtn')}
                     </Button>
                   )}
@@ -492,6 +541,7 @@ export default function SettingsPage() {
       >
         {canManage && (
           <Button variant="primary" disabled={!dirty || saving || !loaded} onClick={handleSave}>
+            <Save width={12} height={12} className="mr-1.5" />
             {saving ? t('settings.saving') : t('settings.save')}
           </Button>
         )}

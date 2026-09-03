@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Inbox, Plus, Refresh, Server as ServerIcon, Sliders, Upload, WarningDiamond } from 'pixelarticons/react';
 import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import socket from '../../../socket';
@@ -48,6 +49,7 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
   const [vpnLoaded, setVpnLoaded] = useState(false);
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
   const subscribedIds = useRef(new Set<string>());
   // Fallback per action in case the socket status:update never arrives (e.g. a
   // dropped connection right after a successful action) — without this the
@@ -182,6 +184,13 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
   );
 
   const onWipeRequest = useCallback((id: string, name: string) => setConfirmWipe({ id, name }), []);
+
+  // Toggled via direct DOM manipulation (not React state) so a scroll tick
+  // never re-renders the table — the sticky first column's shadow is driven
+  // purely by CSS off this class.
+  const handleTableScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    e.currentTarget.classList.toggle('is-scrolled', e.currentTarget.scrollLeft > 0);
+  }, []);
 
   useEffect(() => {
     function onStatusUpdate({
@@ -381,7 +390,8 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
       />
 
       <div className="px-6 mt-6 container">
-        <div className="mb-2">
+        <div className="mb-2 flex items-center gap-2">
+          <Sliders width={15} height={15} className="text-ink-2" />
           <span className="text-base text-ink-2 uppercase font-mono">
             {t('serverDetail.infoSectionResources')}
           </span>
@@ -403,7 +413,8 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
       <div className="border-t border-line mx-6 my-6" />
 
       <div className="px-6 pb-8 container overflow-hidden">
-        <div className="mb-2">
+        <div className="mb-2 flex items-center gap-2">
+          <ServerIcon width={15} height={15} className="text-ink-2" />
           <span className="text-base text-ink-2 uppercase font-mono">{t('servers.title')}</span>
         </div>
 
@@ -452,16 +463,22 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
                 disabled={importing}
                 onClick={() => importInputRef.current?.click()}
               >
+                <Upload width={12} height={12} className="mr-1.5" />
                 {importing ? t('adminDashboard.importing') : t('adminDashboard.importGame')}
               </Button>
               <Button variant="primary" onClick={() => navigate('/admin/servers/new')}>
+                <Plus width={12} height={12} className="mr-1.5" />
                 {t('adminDashboard.addGame')}
               </Button>
             </div>
           )}
         </div>
 
-        <div className="border border-line bg-bg-1 overflow-x-auto">
+        <div
+          ref={tableScrollRef}
+          onScroll={handleTableScroll}
+          className="border border-line bg-bg-1 overflow-x-auto"
+        >
           <table
             className="border-collapse text-left"
             style={{ tableLayout: 'fixed', width: '100%', minWidth: 1590 }}
@@ -475,7 +492,7 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
               <col style={{ width: 180 }} />
               <col style={{ width: 110 }} />
               <col style={{ width: 230 }} />
-              <col style={{ width: 230 }} />
+              <col style={{ width: 250 }} />
               <col style={{ width: 190 }} />
             </colgroup>
             <thead>
@@ -495,7 +512,7 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
                   <th
                     key={col}
                     className={`px-4 py-2.5 border-r border-b border-line-2 font-mono text-[11px] font-normal last:border-r-0 text-ink-3 uppercase tracking-wider sticky top-0 z-20 bg-bg-2${
-                      i === 0 ? ' left-0 z-30' : ''
+                      i === 0 ? ' left-0 z-30 transition-shadow' : ''
                     }`}
                   >
                     {col}
@@ -525,10 +542,15 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
                 <tr>
                   <td colSpan={10} className="px-5 py-10">
                     <div className="flex items-center gap-4">
-                      <span className="font-mono text-xs" style={{ color: 'var(--red)' }}>
+                      <span
+                        className="inline-flex items-center gap-1.5 font-mono text-xs"
+                        style={{ color: 'var(--red)' }}
+                      >
+                        <WarningDiamond width={13} height={13} />
                         {t('adminDashboard.loadFailed')}
                       </span>
                       <Button size="sm" onClick={loadServers}>
+                        <Refresh width={12} height={12} className="mr-1.5" />
                         {t('adminDashboard.retry')}
                       </Button>
                     </div>
@@ -538,8 +560,11 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
 
               {loaded && !loadError && servers.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-5 py-10 font-mono text-xs text-ink-3">
-                    {t('adminDashboard.noServers')}
+                  <td colSpan={10} className="px-5 py-10">
+                    <div className="flex flex-col items-center gap-2 font-mono text-xs text-ink-3">
+                      <Inbox width={22} height={22} />
+                      {t('adminDashboard.noServers')}
+                    </div>
                   </td>
                 </tr>
               )}

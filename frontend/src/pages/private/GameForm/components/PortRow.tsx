@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { Trash } from 'pixelarticons/react';
 import { PortFormRow } from "../../../../types";
 
 interface PortRowProps {
@@ -49,7 +50,7 @@ export function PortRow({ port, idx, onChange, onRemove, conflictsWith }: PortRo
           onClick={() => onRemove(idx)}
           className="h-9 flex items-center justify-center bg-bg-1 border border-line text-ink-3 cursor-pointer hover:text-red"
         >
-          X
+          <Trash width={14} height={14} />
         </button>
       </div>
       {conflictsWith && (

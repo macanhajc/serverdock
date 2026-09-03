@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { ArrowDown, ArrowUp, Cpu, Database, MemoryStick, Wifi } from 'pixelarticons/react';
 import { HostDisk, Server, ServerStats } from '../../../../types';
 import { fmtBytes } from '../../../../utils/format';
 
@@ -40,7 +41,8 @@ export function GlobalStatsCard({
     <div className="border border-line bg-bg-1 grid grid-cols-4">
       {/* CPU */}
       <div className="px-5 py-4 border-r border-line">
-        <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+        <div className="flex items-center gap-1.5 font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+          <Cpu width={12} height={12} />
           {t('adminDashboard.statCpu')}
         </div>
         <div className="flex items-baseline gap-2 mb-3">
@@ -73,7 +75,8 @@ export function GlobalStatsCard({
 
       {/* RAM */}
       <div className="px-5 py-4 border-r border-line">
-        <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+        <div className="flex items-center gap-1.5 font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+          <MemoryStick width={12} height={12} />
           {t('adminDashboard.statRam')}
         </div>
         <div className="flex items-baseline gap-2 mb-3">
@@ -103,7 +106,8 @@ export function GlobalStatsCard({
 
       {/* Disk */}
       <div className="px-5 py-4 border-r border-line">
-        <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+        <div className="flex items-center gap-1.5 font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+          <Database width={12} height={12} />
           {t('adminDashboard.statDisk')}
         </div>
         {hostDisk ? (
@@ -131,15 +135,18 @@ export function GlobalStatsCard({
 
       {/* Network */}
       <div className="px-5 py-4">
-        <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+        <div className="flex items-center gap-1.5 font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+          <Wifi width={12} height={12} />
           {t('adminDashboard.statNetwork')}
         </div>
         <div className="font-mono text-sm text-ink-3 flex flex-col gap-1">
-          <span>
-            ↓ <span className="text-ink font-bold">{fmtBytes(totalNetIn)}/s</span>
+          <span className="inline-flex items-center gap-1">
+            <ArrowDown width={11} height={11} />
+            <span className="text-ink font-bold">{fmtBytes(totalNetIn)}/s</span>
           </span>
-          <span>
-            ↑ <span className="text-ink font-bold">{fmtBytes(totalNetOut)}/s</span>
+          <span className="inline-flex items-center gap-1">
+            <ArrowUp width={11} height={11} />
+            <span className="text-ink font-bold">{fmtBytes(totalNetOut)}/s</span>
           </span>
         </div>
       </div>

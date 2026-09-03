@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Play, RotateCw, Square, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Play, Refresh, Stop, Trash } from 'pixelarticons/react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../../../context/AuthContext';
 import { Button, CopyButton, StatusBadge, Sparkline } from '../../../../components';
@@ -58,7 +58,7 @@ export const MonitoringRow = memo(function MonitoringRow({
       className="group border-b border-line hover:bg-bg-2 last:border-none cursor-pointer transition-colors"
       onClick={() => navigate(`/admin/servers/${id}`)}
     >
-      <td className="border-r border-line px-5 py-3.5 sticky left-0 z-10 bg-bg-1 group-hover:bg-bg-2 transition-colors">
+      <td className="border-r border-line px-5 py-3.5 sticky left-0 z-10 bg-bg-1 group-hover:bg-bg-2 transition">
         <div className="flex items-center gap-4">
           <div className="w-8 h-8 shrink-0 border border-line overflow-hidden grid place-items-center">
             {server.avatarUrl ? (
@@ -160,9 +160,11 @@ export const MonitoringRow = memo(function MonitoringRow({
 
       <td className="border-r border-line px-4 py-3.5">
         {isRunning && stats ? (
-          <span className="font-mono text-xs text-ink-3 whitespace-nowrap text-ellipsis overflow-hidden block max-w-full">
-            ↓ <span className="text-ink">{fmtBytes(stats.netInRate)}/s</span>
-            <span className="mx-2 text-line-2">·</span>↑{' '}
+          <span className="inline-flex items-center font-mono text-xs text-ink-3 whitespace-nowrap text-ellipsis overflow-hidden max-w-full">
+            <ArrowDown width={11} height={11} className="mr-1" />
+            <span className="text-ink">{fmtBytes(stats.netInRate)}/s</span>
+            <span className="mx-2 text-line-2">·</span>
+            <ArrowUp width={11} height={11} className="mr-1" />
             <span className="text-ink">{fmtBytes(stats.netOutRate)}/s</span>
           </span>
         ) : (
@@ -199,7 +201,7 @@ export const MonitoringRow = memo(function MonitoringRow({
                 aria-label={t('adminDashboard.actStart')}
                 onClick={(e) => act(e, () => onAction(id, 'start'))}
               >
-                <Play size={12} />
+                <Play width={12} height={12} />
               </Button>
               <Button
                 size="sm"
@@ -210,7 +212,7 @@ export const MonitoringRow = memo(function MonitoringRow({
                 aria-label={t('adminDashboard.actStop')}
                 onClick={(e) => act(e, () => onAction(id, 'stop'))}
               >
-                <Square size={12} />
+                <Stop width={12} height={12} />
               </Button>
               <Button
                 size="sm"
@@ -220,7 +222,7 @@ export const MonitoringRow = memo(function MonitoringRow({
                 aria-label={t('adminDashboard.actRestart')}
                 onClick={(e) => act(e, () => onAction(id, 'restart'))}
               >
-                <RotateCw size={12} />
+                <Refresh width={12} height={12} />
               </Button>
             </>
           )}
@@ -234,7 +236,7 @@ export const MonitoringRow = memo(function MonitoringRow({
               aria-label={t('adminDashboard.actReset')}
               onClick={(e) => act(e, () => onWipeRequest(id, name))}
             >
-              <Trash2 size={12} />
+              <Trash width={12} height={12} />
             </Button>
           )}
         </div>

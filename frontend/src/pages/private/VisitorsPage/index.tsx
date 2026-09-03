@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Lock, Unlock, UserX, Users } from 'pixelarticons/react';
 import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import { Button } from '../../../components/core/Button';
 import { PageHeader } from '../../../components/core/PageHeader';
 import { ConfirmModal } from '../../../components/core/ConfirmModal';
+import { StatusDot } from '../../../components/core/StatusDot';
 import { formatDate } from '../../../utils/format';
 import { VisitorRowSkeleton } from './components/VisitorRowSkeleton';
 import type { Visitor, BlockedIp } from '../../../types';
@@ -156,6 +158,9 @@ export default function VisitorsPage() {
                     {t('visitors.colUsername')}
                   </th>
                   <th className="text-left px-4 py-3 font-mono border-r border-line text-[11px] text-ink-3 uppercase tracking-wider whitespace-nowrap">
+                    {t('visitors.colPeer')}
+                  </th>
+                  <th className="text-left px-4 py-3 font-mono border-r border-line text-[11px] text-ink-3 uppercase tracking-wider whitespace-nowrap">
                     {t('visitors.colIp')}
                   </th>
                   <th className="text-left px-4 py-3 font-mono border-r border-line text-[11px] text-ink-3 uppercase tracking-wider whitespace-nowrap">
@@ -177,7 +182,10 @@ export default function VisitorsPage() {
         )}
 
         {loaded && visitors.length === 0 && (
-          <span className="font-mono text-xs text-ink-3">{t('visitors.noVisitors')}</span>
+          <div className="flex items-center gap-2 font-mono text-xs text-ink-3">
+            <Users width={14} height={14} />
+            {t('visitors.noVisitors')}
+          </div>
         )}
 
         {loaded && visitors.length > 0 && (
@@ -187,6 +195,9 @@ export default function VisitorsPage() {
                 <tr className="border-b bg-bg-2 border-line">
                   <th className="text-left px-4 py-3 font-mono border-r border-line text-[11px] text-ink-3 uppercase tracking-wider whitespace-nowrap">
                     {t('visitors.colUsername')}
+                  </th>
+                  <th className="text-left px-4 py-3 font-mono border-r border-line text-[11px] text-ink-3 uppercase tracking-wider whitespace-nowrap">
+                    {t('visitors.colPeer')}
                   </th>
                   <th className="text-left px-4 py-3 font-mono border-r border-line text-[11px] text-ink-3 uppercase tracking-wider whitespace-nowrap">
                     {t('visitors.colIp')}
@@ -212,17 +223,28 @@ export default function VisitorsPage() {
                         {v.username}
                         {v.blocked && (
                           <span
-                            className="font-mono text-[8px] font-semibold tracking-wider uppercase px-1.5 py-0.5"
+                            className="inline-flex items-center gap-1 font-mono text-[8px] font-semibold tracking-wider uppercase px-1.5 py-0.5"
                             style={{
                               color: 'var(--red)',
                               background: 'color-mix(in oklab, var(--red) 10%, transparent)',
                               border: '1px solid color-mix(in oklab, var(--red) 45%, transparent)',
                             }}
                           >
+                            <Lock width={9} height={9} />
                             {t('visitors.blockedBadge')}
                           </span>
                         )}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 font-mono border-r border-line text-xs text-ink-2">
+                      {v.peer ? (
+                        <span className="flex items-center gap-2">
+                          <StatusDot online={v.peer.online} />
+                          {v.peer.name}
+                        </span>
+                      ) : (
+                        '—'
+                      )}
                     </td>
                     <td className="px-4 py-3 font-mono border-r border-line text-xs text-ink-2">
                       {v.ip || '—'}
@@ -242,6 +264,7 @@ export default function VisitorsPage() {
                               variant="warn"
                               onClick={() => unblockVisitor(v.id, v.username, v.ip)}
                             >
+                              <Unlock width={12} height={12} className="mr-1.5" />
                               {t('visitors.unblock')}
                             </Button>
                           ) : (
@@ -257,6 +280,7 @@ export default function VisitorsPage() {
                                 })
                               }
                             >
+                              <Lock width={12} height={12} className="mr-1.5" />
                               {t('visitors.block')}
                             </Button>
                           )}
@@ -267,6 +291,7 @@ export default function VisitorsPage() {
                               setConfirm({ type: 'remove', id: v.id, username: v.username })
                             }
                           >
+                            <UserX width={12} height={12} className="mr-1.5" />
                             {t('visitors.remove')}
                           </Button>
                         </div>
@@ -281,7 +306,8 @@ export default function VisitorsPage() {
 
         {orphanedBlockedIps.length > 0 && (
           <div className="mt-6">
-            <h2 className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-2">
+            <h2 className="flex items-center gap-1.5 font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-2">
+              <Lock width={11} height={11} />
               {t('visitors.blockedIpsTitle')}
             </h2>
             <div className="border border-line bg-bg-1 overflow-x-auto">
@@ -312,6 +338,7 @@ export default function VisitorsPage() {
                       <td className="px-4 py-3 text-right">
                         {canManage && (
                           <Button size="sm" variant="warn" onClick={() => unblockIp(b.ip)}>
+                            <Unlock width={12} height={12} className="mr-1.5" />
                             {t('visitors.unblock')}
                           </Button>
                         )}

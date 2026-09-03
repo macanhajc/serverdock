@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Archive, Close, Download, Plus, Save, Trash, Undo } from 'pixelarticons/react';
 import { useAuth } from '../../../../context/AuthContext';
 import { useToast } from '../../../../context/ToastContext';
 import { Button } from '../../../../components/core/Button';
@@ -235,6 +236,7 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
         </div>
         {!showCreateForm && canManage && (
           <Button size="sm" variant="primary" onClick={() => setShowCreateForm(true)}>
+            <Plus width={12} height={12} className="mr-1.5" />
             {t('serverDetail.backupCreate')}
           </Button>
         )}
@@ -261,6 +263,7 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
           {createError && <div className="font-mono text-xs text-red">{createError}</div>}
           <div className="flex gap-2">
             <Button size="sm" variant="primary" disabled={creating} onClick={createBackup}>
+              <Save width={12} height={12} className="mr-1.5" />
               {creating ? t('serverDetail.backupCreating') : t('common.save')}
             </Button>
             <Button
@@ -272,6 +275,7 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
                 setCreateError('');
               }}
             >
+              <Close width={12} height={12} className="mr-1.5" />
               {t('common.cancel')}
             </Button>
           </div>
@@ -283,11 +287,13 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
         <div className="px-6 py-8 font-mono text-xs text-ink-3">{t('common.loading')}</div>
       ) : backups.length === 0 && !showCreateForm ? (
         <div className="px-6 py-12 flex flex-col items-center gap-4">
+          <Archive width={24} height={24} className="text-ink-3" />
           <p className="font-mono text-sm text-ink-3 text-center">
             {t('serverDetail.backupEmpty')}
           </p>
           {canManage && (
             <Button variant="primary" onClick={() => setShowCreateForm(true)}>
+              <Plus width={12} height={12} className="mr-1.5" />
               {t('serverDetail.backupCreate')}
             </Button>
           )}
@@ -313,6 +319,7 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <Button size="sm" onClick={() => downloadBackup(b)} disabled={busy}>
+                    <Download width={12} height={12} className="mr-1.5" />
                     {busy && downloadPct != null
                       ? t('serverDetail.backupDownloading', { pct: downloadPct })
                       : t('serverDetail.backupDownload')}
@@ -325,6 +332,7 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
                         onClick={() => setConfirmRestore(b)}
                         disabled={busy}
                       >
+                        <Undo width={12} height={12} className="mr-1.5" />
                         {busy ? t('serverDetail.backupRestoring') : t('serverDetail.backupRestore')}
                       </Button>
                       <Button
@@ -333,6 +341,7 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
                         onClick={() => setConfirmDelete(b)}
                         disabled={busy}
                       >
+                        <Trash width={12} height={12} className="mr-1.5" />
                         {t('common.delete')}
                       </Button>
                     </>

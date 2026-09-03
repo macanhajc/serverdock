@@ -1,5 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  Calendar,
+  Check,
+  Close,
+  Pencil,
+  Play,
+  Plus,
+  Save,
+  Trash,
+  X,
+} from 'pixelarticons/react';
 import { useAuth } from '../../../../context/AuthContext';
 import { useToast } from '../../../../context/ToastContext';
 import { Button } from '../../../../components/core/Button';
@@ -425,6 +436,7 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
                 setEditId(null);
               }}
             >
+              <Plus width={12} height={12} className="mr-1.5" />
               {t('serverDetail.scheduleAdd')}
             </Button>
           )}
@@ -435,6 +447,7 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
         <div className="px-6 py-8 font-mono text-xs text-ink-3">{t('common.loading')}</div>
       ) : schedules.length === 0 && !showAddForm ? (
         <div className="px-6 py-12 flex flex-col items-center gap-4">
+          <Calendar width={24} height={24} className="text-ink-3" />
           <p className="font-mono text-sm text-ink-3 text-center">
             {t('serverDetail.scheduleEmpty')}
           </p>
@@ -461,6 +474,7 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
                       disabled={editSaving}
                       onClick={saveEditSchedule}
                     >
+                      <Save width={12} height={12} className="mr-1.5" />
                       {editSaving ? t('serverDetail.saving') : t('common.save')}
                     </Button>
                     <Button
@@ -471,6 +485,7 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
                         setEditError('');
                       }}
                     >
+                      <Close width={12} height={12} className="mr-1.5" />
                       {t('common.cancel')}
                     </Button>
                   </div>
@@ -524,9 +539,14 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
                       <>
                         <span className="font-mono text-xs text-ink-3">·</span>
                         <span
-                          className={`font-mono text-xs ${s.lastRun.ok ? 'text-green' : 'text-red'}`}
+                          className={`inline-flex items-center gap-1 font-mono text-xs ${s.lastRun.ok ? 'text-green' : 'text-red'}`}
                         >
-                          {relativeTime(s.lastRun.at)} {s.lastRun.ok ? '✓' : '✗'}
+                          {relativeTime(s.lastRun.at)}
+                          {s.lastRun.ok ? (
+                            <Check width={11} height={11} />
+                          ) : (
+                            <X width={11} height={11} />
+                          )}
                         </span>
                       </>
                     )}
@@ -539,7 +559,14 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
                       onClick={() => runNow(s.id)}
                       disabled={runningId === s.id}
                     >
-                      {runningId === s.id ? '…' : t('serverDetail.scheduleRunNow')}
+                      {runningId === s.id ? (
+                        '…'
+                      ) : (
+                        <>
+                          <Play width={12} height={12} className="mr-1.5" />
+                          {t('serverDetail.scheduleRunNow')}
+                        </>
+                      )}
                     </Button>
                     <Button
                       onClick={() => {
@@ -555,9 +582,13 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
                         setShowAddForm(false);
                       }}
                     >
+                      <Pencil width={12} height={12} className="mr-1.5" />
                       {t('common.edit')}
                     </Button>
-                    <Button onClick={() => setConfirmDelete(s)}>{t('common.delete')}</Button>
+                    <Button onClick={() => setConfirmDelete(s)}>
+                      <Trash width={12} height={12} className="mr-1.5" />
+                      {t('common.delete')}
+                    </Button>
                   </div>
                 )}
               </div>
@@ -577,6 +608,7 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
           {addError && <div className="font-mono text-xs text-red">{addError}</div>}
           <div className="flex gap-2">
             <Button size="sm" variant="primary" disabled={addSaving} onClick={createSchedule}>
+              <Save width={12} height={12} className="mr-1.5" />
               {addSaving ? t('serverDetail.saving') : t('common.save')}
             </Button>
             <Button
@@ -588,6 +620,7 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
                 setAddError('');
               }}
             >
+              <Close width={12} height={12} className="mr-1.5" />
               {t('common.cancel')}
             </Button>
           </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Gear, Key, Trash, User } from 'pixelarticons/react';
 import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import { Button } from '../../../components/core/Button';
@@ -438,7 +439,8 @@ export default function AdminsPage() {
                         <td className="px-4 py-3 font-mono border-r border-line text-sm text-ink">
                           {a.username}
                           {isSelf && (
-                            <span className="ml-2 font-mono text-[10px] text-ink-3">
+                            <span className="ml-2 inline-flex items-center gap-1 font-mono text-[10px] text-ink-3">
+                              <User width={9} height={9} />
                               {t('admins.youBadge')}
                             </span>
                           )}
@@ -470,6 +472,7 @@ export default function AdminsPage() {
                                 )
                               }
                             >
+                              <Gear width={12} height={12} className="mr-1.5" />
                               {t('admins.actManage')}
                             </Button>
                             <Button
@@ -483,6 +486,7 @@ export default function AdminsPage() {
                                 )
                               }
                             >
+                              <Key width={12} height={12} className="mr-1.5" />
                               {t('admins.actResetPassword')}
                             </Button>
                             <Button
@@ -491,6 +495,7 @@ export default function AdminsPage() {
                               disabled={isSelf}
                               onClick={() => setConfirmDelete(a)}
                             >
+                              <Trash width={12} height={12} className="mr-1.5" />
                               {t('admins.remove')}
                             </Button>
                           </div>

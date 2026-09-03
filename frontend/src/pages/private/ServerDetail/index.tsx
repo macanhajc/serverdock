@@ -2,6 +2,28 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import {
+  Archive,
+  ArrowDown,
+  ArrowUp,
+  Calendar,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CircleInfo,
+  Cpu,
+  Database,
+  Folder,
+  MemoryStick,
+  Pencil,
+  Play,
+  Refresh,
+  Stop,
+  Terminal,
+  Trash,
+  Wifi,
+  X,
+} from 'pixelarticons/react';
 import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import socket from '../../../socket';
@@ -324,6 +346,7 @@ export default function ServerDetail() {
       <div className="p-6 flex flex-col items-start gap-4">
         <p className="m-0 font-mono text-sm text-red">{t('serverDetail.loadFailed')}</p>
         <Button size="sm" onClick={() => navigate('/admin')}>
+          <ChevronLeft width={12} height={12} className="mr-1.5" />
           {t('serverDetail.back')}
         </Button>
       </div>
@@ -351,8 +374,9 @@ export default function ServerDetail() {
       <div className="flex items-center gap-4 py-4 px-6 border-b border-line bg-bg-1 flex-none">
         <button
           onClick={() => navigate('/admin')}
-          className="bg-bg-2 border border-line-2 text-ink-2 px-3 py-2 font-mono text-xs cursor-pointer flex-none"
+          className="inline-flex items-center gap-1.5 bg-bg-2 border border-line-2 text-ink-2 px-3 py-2 font-mono text-xs cursor-pointer flex-none"
         >
+          <ChevronLeft width={12} height={12} />
           {t('serverDetail.back')}
         </button>
         {server.avatarUrl ? (
@@ -390,6 +414,7 @@ export default function ServerDetail() {
                 disabled={!isNotCreated || busy}
                 onClick={() => callAction('start')}
               >
+                <Play width={12} height={12} className="mr-1.5" />
                 {t('serverDetail.actStart')}
               </Button>
               <Button
@@ -398,20 +423,24 @@ export default function ServerDetail() {
                 disabled={!isRunning || busy}
                 onClick={() => callAction('stop')}
               >
+                <Stop width={12} height={12} className="mr-1.5" />
                 {t('serverDetail.actStop')}
               </Button>
               <Button size="sm" disabled={!isRunning || busy} onClick={() => callAction('restart')}>
+                <Refresh width={12} height={12} className="mr-1.5" />
                 {t('serverDetail.actRestart')}
               </Button>
             </>
           )}
           {hasPermission('servers:reset') && (
             <Button size="sm" disabled={busy} onClick={() => setConfirmReset(true)}>
+              <Trash width={12} height={12} className="mr-1.5" />
               {t('serverDetail.actReset')}
             </Button>
           )}
           {hasPermission('games:edit') && (
             <Button size="sm" onClick={() => navigate(`/admin/servers/${id}/edit`)}>
+              <Pencil width={12} height={12} className="mr-1.5" />
               {t('serverDetail.editConfig')}
             </Button>
           )}
@@ -424,7 +453,7 @@ export default function ServerDetail() {
           className="flex items-center gap-2 px-4 py-2.25 border-b border-line font-mono text-[11.5px] text-red flex-none"
           style={{ background: 'color-mix(in oklab, var(--red) 8%, transparent)' }}
         >
-          <span>✕</span>
+          <X width={13} height={13} className="shrink-0" />
           <span className="flex-1">{actionError}</span>
           <button
             className="text-ink-3 hover:text-ink cursor-pointer"
@@ -442,28 +471,35 @@ export default function ServerDetail() {
             className="flex items-center gap-4 px-6 py-2.5 cursor-pointer hover:bg-bg-2 select-none"
             onClick={() => setStatsOpen((v) => !v)}
           >
-            <span className="font-mono text-xs text-ink-3 flex-none">
-              {t('serverDetail.resources')} {statsOpen ? '▾' : '▸'}
+            <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3 flex-none">
+              {t('serverDetail.resources')}
+              {statsOpen ? (
+                <ChevronDown width={12} height={12} />
+              ) : (
+                <ChevronRight width={12} height={12} />
+              )}
             </span>
             {!statsOpen && (
               <>
-                <span className="font-mono text-xs text-ink-3">
-                  CPU <span className="text-ink">{stats.cpu.toFixed(1)}%</span>
+                <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3">
+                  <Cpu width={11} height={11} /> <span className="text-ink">{stats.cpu.toFixed(1)}%</span>
                 </span>
-                <span className="font-mono text-xs text-ink-3">
-                  RAM{' '}
+                <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3">
+                  <MemoryStick width={11} height={11} />
                   <span className="text-ink">
                     {fmtBytes(stats.memUsed)}
                     {stats.memLimit ? ` / ${fmtBytes(stats.memLimit)}` : ''}
                   </span>
                 </span>
-                <span className="font-mono text-xs text-ink-3">
-                  {t('serverDetail.resNet')} ↓{' '}
-                  <span className="text-ink">{fmtBytes(stats.netInRate)}/s</span> ↑{' '}
+                <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3">
+                  <Wifi width={11} height={11} /> {t('serverDetail.resNet')}
+                  <ArrowDown width={11} height={11} />
+                  <span className="text-ink">{fmtBytes(stats.netInRate)}/s</span>
+                  <ArrowUp width={11} height={11} />
                   <span className="text-ink">{fmtBytes(stats.netOutRate)}/s</span>
                 </span>
-                <span className="font-mono text-xs text-ink-3">
-                  {t('serverDetail.resDisk')}{' '}
+                <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3">
+                  <Database width={11} height={11} /> {t('serverDetail.resDisk')}{' '}
                   <span className="text-ink">{fmtBytes(server.diskUsed ?? 0)}</span>
                 </span>
               </>
@@ -473,7 +509,9 @@ export default function ServerDetail() {
           {statsOpen && (
             <div className="px-6 pt-1 pb-4 flex flex-col gap-3">
               <div className="flex items-center gap-3">
-                <span className="font-mono text-xs text-ink-3 w-10 shrink-0">CPU</span>
+                <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3 w-10 shrink-0">
+                  <Cpu width={11} height={11} /> CPU
+                </span>
                 <div className="flex-1 h-1.5 relative" style={{ background: 'var(--line-2)' }}>
                   <div
                     className="absolute inset-y-0 left-0 transition-[width] duration-500"
@@ -487,7 +525,9 @@ export default function ServerDetail() {
               </div>
 
               <div className="flex items-center gap-3">
-                <span className="font-mono text-xs text-ink-3 w-10 shrink-0">RAM</span>
+                <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3 w-10 shrink-0">
+                  <MemoryStick width={11} height={11} /> RAM
+                </span>
                 {stats.memLimit ? (
                   <>
                     <div className="flex-1 h-1.5 relative" style={{ background: 'var(--line-2)' }}>
@@ -516,20 +556,22 @@ export default function ServerDetail() {
               </div>
 
               <div className="flex items-center gap-3">
-                <span className="font-mono text-xs text-ink-3 w-10 shrink-0">
-                  {t('serverDetail.resNet')}
+                <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3 w-10 shrink-0">
+                  <Wifi width={11} height={11} /> {t('serverDetail.resNet')}
                 </span>
-                <span className="font-mono text-xs text-ink-3">
-                  ↓ <span className="text-ink">{fmtBytes(stats.netInRate)}/s</span>
+                <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3">
+                  <ArrowDown width={11} height={11} />
+                  <span className="text-ink">{fmtBytes(stats.netInRate)}/s</span>
                 </span>
-                <span className="font-mono text-xs text-ink-3">
-                  ↑ <span className="text-ink">{fmtBytes(stats.netOutRate)}/s</span>
+                <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3">
+                  <ArrowUp width={11} height={11} />
+                  <span className="text-ink">{fmtBytes(stats.netOutRate)}/s</span>
                 </span>
               </div>
 
               <div className="flex flex-row gap-3">
-                <span className="font-mono text-xs text-ink-3 w-10 shrink-0">
-                  {t('serverDetail.resDisk')}
+                <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3 w-10 shrink-0">
+                  <Database width={11} height={11} /> {t('serverDetail.resDisk')}
                 </span>
                 <span className="font-mono text-xs text-ink shrink-0">
                   {fmtBytes(server.diskUsed ?? 0)}
@@ -543,11 +585,11 @@ export default function ServerDetail() {
       {/* ── Tab bar ───────────────────────────────────────────────────────── */}
       <Tabs
         tabs={[
-          { label: t('serverDetail.tabInfo'), value: 'info' },
-          { label: t('serverDetail.tabConsole'), value: 'console' },
-          { label: t('serverDetail.tabFiles'), value: 'files' },
-          { label: t('serverDetail.tabSchedule'), value: 'schedule' },
-          { label: t('serverDetail.tabBackups'), value: 'backups' },
+          { label: t('serverDetail.tabInfo'), value: 'info', icon: CircleInfo },
+          { label: t('serverDetail.tabConsole'), value: 'console', icon: Terminal },
+          { label: t('serverDetail.tabFiles'), value: 'files', icon: Folder },
+          { label: t('serverDetail.tabSchedule'), value: 'schedule', icon: Calendar },
+          { label: t('serverDetail.tabBackups'), value: 'backups', icon: Archive },
         ]}
         value={tab}
         onChange={setTab}

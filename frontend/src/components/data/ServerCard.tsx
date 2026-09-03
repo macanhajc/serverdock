@@ -1,4 +1,5 @@
 import { HTMLAttributes, ReactNode, memo } from 'react';
+import { ExternalLink } from 'pixelarticons/react';
 import { StatusBadge } from '../core/StatusBadge';
 import { CopyButton } from '../core/CopyButton';
 import { storeLabel } from '../../utils/serverStatus';
@@ -131,13 +132,14 @@ export const ServerCard = memo(function ServerCard({
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="absolute left-3 top-3 font-mono text-xs tracking-widest uppercase px-2 py-0.5 text-ink-2 hover:text-ink"
+            className="absolute left-3 top-3 inline-flex items-center gap-1 font-mono text-xs tracking-widest uppercase px-2 py-0.5 text-ink-2 hover:text-ink"
             style={{
               border: '1px solid var(--line-2)',
               background: 'color-mix(in oklab, #000 45%, transparent)',
             }}
           >
-            {storeLabel(storeUrl)} ↗
+            {storeLabel(storeUrl)}
+            <ExternalLink width={11} height={11} />
           </a>
         )}
         {coverActions && (

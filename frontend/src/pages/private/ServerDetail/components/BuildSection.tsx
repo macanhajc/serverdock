@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Tools } from 'pixelarticons/react';
 import { Button } from '../../../../components/core/Button';
 import { StatusBadge } from '../../../../components/core/StatusBadge';
 import { BuildLine } from '../../GameForm/components/BuildLine';
@@ -68,6 +69,7 @@ export function BuildSection({ id, token, imageBuilt }: BuildSectionProps) {
           disabled={building || starting}
           onClick={triggerBuild}
         >
+          <Tools width={12} height={12} className="mr-1.5" />
           {building
             ? t('serverDetail.building')
             : built

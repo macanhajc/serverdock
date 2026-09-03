@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { Blocks, ChevronLeft, Close, Download, Trash, Upload } from 'pixelarticons/react';
 import { useAuth } from '../../../context/AuthContext';
 import { useBuildLog } from '../../../hooks/useBuildLog';
 import { templates } from '../../../data/templates';
@@ -136,7 +137,14 @@ export default function GameForm() {
         setRemoveAvatar(false);
         setQueryType(game.query?.type ?? 'none');
         setQueryPort(game.query?.port ? String(game.query.port) : '');
-        setDockerfile('');
+        if (game.imageSource === 'local') {
+          fetch(`/api/games/${id}/dockerfile`, { headers: { Authorization: `Bearer ${token}` } })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data) => setDockerfile(data?.content ?? ''))
+            .catch(() => {});
+        } else {
+          setDockerfile('');
+        }
         setPorts(
           (game.ports ?? []).map((p: { host: number; container: number; protocol: string }) => ({
             ...p,
@@ -510,8 +518,9 @@ export default function GameForm() {
           onClick={() =>
             guardLeave(() => (id ? navigate(`/admin/servers/${id}`) : navigate('/admin')))
           }
-          className="bg-bg-2 border border-line-2 text-ink-2 px-3 py-2 font-mono text-xs cursor-pointer hover:text-ink"
+          className="inline-flex items-center gap-1.5 bg-bg-2 border border-line-2 text-ink-2 px-3 py-2 font-mono text-xs cursor-pointer hover:text-ink"
         >
+          <ChevronLeft width={12} height={12} />
           {t('gameForm.back')}
         </button>
         <div>
@@ -528,7 +537,8 @@ export default function GameForm() {
         <div className="px-6 pt-6 pb-8 container">
           {!isEdit && (
             <div className="mb-6">
-              <div className="font-mono tracking-widest uppercase text-ink-3 mb-3">
+              <div className="flex items-center gap-2 font-mono tracking-widest uppercase text-ink-3 mb-3">
+                <Blocks width={13} height={13} />
                 {t('gameForm.templateHeading')}
               </div>
               <div className="flex flex-wrap gap-2">
@@ -590,10 +600,12 @@ export default function GameForm() {
                 </div>
                 <div className="flex gap-2" style={{ width: 'max-content' }}>
                   <Button size="sm" onClick={() => avatarInputRef.current?.click()}>
+                    <Upload width={12} height={12} className="mr-1.5" />
                     {t('gameForm.avatarUpload')}
                   </Button>
                   {avatarPreview && (
                     <Button size="sm" variant="ghost" onClick={handleRemoveAvatar}>
+                      <Trash width={12} height={12} className="mr-1.5" />
                       {t('gameForm.avatarRemove')}
                     </Button>
                   )}
@@ -921,12 +933,14 @@ export default function GameForm() {
       >
         {isEdit && hasPermission('games:delete') && (
           <Button variant="danger" disabled={saving} onClick={() => setConfirmDelete(true)}>
+            <Trash width={12} height={12} className="mr-1.5" />
             {t('gameForm.actDelete')}
           </Button>
         )}
 
         {isEdit && (
           <Button variant="ghost" disabled={saving} onClick={handleExport}>
+            <Download width={12} height={12} className="mr-1.5" />
             {t('gameForm.actExport')}
           </Button>
         )}
@@ -944,6 +958,7 @@ export default function GameForm() {
           disabled={saving}
           onClick={() => guardLeave(() => navigate('/admin'))}
         >
+          <Close width={12} height={12} className="mr-1.5" />
           {t('gameForm.actCancel')}
         </Button>
 

@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { WarningDiamond } from 'pixelarticons/react';
 import { Button } from './Button';
 
 interface ConfirmModalProps {
@@ -32,7 +33,7 @@ export function ConfirmModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 px-6 py-5 border-b border-line">
-          <span className="text-yellow font-bold text-[15px]">⚠</span>
+          <WarningDiamond width={16} height={16} className="text-yellow shrink-0" />
           <h2 className="m-0 text-[15px] font-bold">{title}</h2>
         </div>
 

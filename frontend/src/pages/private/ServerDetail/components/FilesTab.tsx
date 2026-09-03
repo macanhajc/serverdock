@@ -6,6 +6,21 @@ import { json } from '@codemirror/lang-json';
 import { yaml } from '@codemirror/lang-yaml';
 import { StreamLanguage } from '@codemirror/language';
 import { properties } from '@codemirror/legacy-modes/mode/properties';
+import {
+  Download,
+  DragAndDrop,
+  File as FileIcon,
+  Folder,
+  FolderPlus,
+  Home,
+  MoreVertical,
+  Pencil,
+  Plus,
+  Refresh,
+  Save,
+  Trash,
+  Undo,
+} from 'pixelarticons/react';
 import { useToast } from '../../../../context/ToastContext';
 import { Button } from '../../../../components/core/Button';
 import { ConfirmModal } from '../../../../components/core/ConfirmModal';
@@ -117,9 +132,11 @@ function FileItem({
             : 'text-ink-2 border-transparent hover:bg-bg-2 hover:text-ink'
         }`}
       >
-        <span
-          className={`w-3 h-3 flex-none ${isDir ? 'bg-[#caa45a] opacity-80' : 'bg-[#3a3a3a] border border-[#4a4a4a]'}`}
-        />
+        {isDir ? (
+          <Folder width={13} height={13} className="flex-none text-[#caa45a] opacity-90" />
+        ) : (
+          <FileIcon width={13} height={13} className="flex-none text-ink-3" />
+        )}
         {renaming ? (
           <input
             autoFocus
@@ -147,7 +164,7 @@ function FileItem({
               menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
             }`}
           >
-            ···
+            <MoreVertical width={13} height={13} />
           </button>
         )}
       </div>
@@ -161,31 +178,34 @@ function FileItem({
           >
             {onRename && (
               <button
-                className="w-full text-left px-3 py-2 font-mono text-xs text-ink-2 hover:bg-bg-3 hover:text-ink cursor-pointer"
+                className="w-full flex items-center gap-2 text-left px-3 py-2 font-mono text-xs text-ink-2 hover:bg-bg-3 hover:text-ink cursor-pointer"
                 onClick={startRename}
               >
+                <Pencil width={12} height={12} />
                 {t('serverDetail.rename')}
               </button>
             )}
             {onDownload && (
               <button
-                className="w-full text-left px-3 py-2 font-mono text-xs text-ink-2 hover:bg-bg-3 hover:text-ink cursor-pointer"
+                className="w-full flex items-center gap-2 text-left px-3 py-2 font-mono text-xs text-ink-2 hover:bg-bg-3 hover:text-ink cursor-pointer"
                 onClick={() => {
                   setMenuOpen(false);
                   onDownload();
                 }}
               >
+                <Download width={12} height={12} />
                 {t('serverDetail.filesDownload')}
               </button>
             )}
             {onRemove && (
               <button
-                className="w-full text-left px-3 py-2 font-mono text-xs text-red hover:bg-bg-3 cursor-pointer"
+                className="w-full flex items-center gap-2 text-left px-3 py-2 font-mono text-xs text-red hover:bg-bg-3 cursor-pointer"
                 onClick={() => {
                   setMenuOpen(false);
                   onRemove();
                 }}
               >
+                <Trash width={12} height={12} />
                 {t('serverDetail.remove')}
               </button>
             )}
@@ -510,12 +530,13 @@ export function FilesTab({ id, token, editable, canWrite }: FilesTabProps) {
       >
         {dragCount > 0 && (
           <div
-            className="absolute inset-0 z-10 flex flex-col items-center justify-center font-mono text-xs text-ink pointer-events-none"
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 font-mono text-xs text-ink pointer-events-none"
             style={{
               border: '2px dashed var(--accent-edge)',
               background: 'color-mix(in oklab, var(--accent) 12%, var(--bg-1))',
             }}
           >
+            <DragAndDrop width={22} height={22} />
             <span className="text-[11px] text-ink-2">{t('serverDetail.dropHere')}</span>
           </div>
         )}
@@ -527,9 +548,10 @@ export function FilesTab({ id, token, editable, canWrite }: FilesTabProps) {
         )}
         <div className="flex items-center flex-wrap gap-1.5 px-4 py-3 border-b border-line font-mono text-xs text-ink-3 flex-none">
           <span
-            className="text-ink-2 cursor-pointer hover:text-ink"
+            className="inline-flex items-center gap-1 text-ink-2 cursor-pointer hover:text-ink"
             onClick={() => navigateToSegment(-1)}
           >
+            <Home width={11} height={11} />
             {t('serverDetail.dataRoot')}
           </span>
           {pathSegments.map((seg, i) => (
@@ -550,24 +572,26 @@ export function FilesTab({ id, token, editable, canWrite }: FilesTabProps) {
           {writable && (
             <span className="ml-auto flex gap-2 flex-none">
               <button
-                className="text-ink-3 hover:text-ink cursor-pointer"
+                className="inline-flex items-center gap-1 text-ink-3 hover:text-ink cursor-pointer"
                 title={t('serverDetail.filesNewFile')}
                 onClick={() => {
                   setCreating('file');
                   setCreateName('');
                 }}
               >
-                +{t('serverDetail.filesNewFile')}
+                <Plus width={11} height={11} />
+                {t('serverDetail.filesNewFile')}
               </button>
               <button
-                className="text-ink-3 hover:text-ink cursor-pointer"
+                className="inline-flex items-center gap-1 text-ink-3 hover:text-ink cursor-pointer"
                 title={t('serverDetail.filesNewFolder')}
                 onClick={() => {
                   setCreating('directory');
                   setCreateName('');
                 }}
               >
-                +{t('serverDetail.filesNewFolder')}
+                <FolderPlus width={11} height={11} />
+                {t('serverDetail.filesNewFolder')}
               </button>
             </span>
           )}
@@ -593,13 +617,11 @@ export function FilesTab({ id, token, editable, canWrite }: FilesTabProps) {
         <div className="flex-1 overflow-y-auto p-2">
           {creating && (
             <div className="flex items-center gap-2.5 px-2.5 py-2 font-mono text-[12.5px] border border-line bg-bg-2">
-              <span
-                className={`w-3 h-3 flex-none ${
-                  creating === 'directory'
-                    ? 'bg-[#caa45a] opacity-80'
-                    : 'bg-[#3a3a3a] border border-[#4a4a4a]'
-                }`}
-              />
+              {creating === 'directory' ? (
+                <Folder width={13} height={13} className="flex-none text-[#caa45a] opacity-90" />
+              ) : (
+                <FileIcon width={13} height={13} className="flex-none text-ink-3" />
+              )}
               <input
                 autoFocus
                 value={createName}
@@ -640,13 +662,15 @@ export function FilesTab({ id, token, editable, canWrite }: FilesTabProps) {
                 {t('serverDetail.filesLoadFailed')}
               </span>
               <Button size="sm" variant="ghost" onClick={() => setDirVersion((v) => v + 1)}>
+                <Refresh width={12} height={12} className="mr-1.5" />
                 {t('common.retry')}
               </Button>
             </div>
           ) : (
             entries.length === 0 &&
             !creating && (
-              <span className="font-mono text-sm text-ink-3 px-3 py-2 block">
+              <span className="flex items-center gap-2 font-mono text-sm text-ink-3 px-3 py-2">
+                <Folder width={14} height={14} />
                 {currentPath === '/' ? t('serverDetail.noFiles') : t('serverDetail.emptyFolder')}
               </span>
             )
@@ -656,7 +680,8 @@ export function FilesTab({ id, token, editable, canWrite }: FilesTabProps) {
 
       {!openFile ? (
         <div className="bg-[#0c0c0c] grid place-items-center p-8">
-          <div className="border border-dashed border-line-2 px-7 py-6 font-mono text-xs text-ink-3 text-center leading-relaxed">
+          <div className="flex flex-col items-center gap-3 border border-dashed border-line-2 px-7 py-6 font-mono text-xs text-ink-3 text-center leading-relaxed">
+            <FileIcon width={22} height={22} />
             {t('serverDetail.selectFile')
               .split('\n')
               .map((line, i) => (
@@ -684,6 +709,7 @@ export function FilesTab({ id, token, editable, canWrite }: FilesTabProps) {
                   setFileError('');
                 }}
               >
+                <Undo width={12} height={12} className="mr-1.5" />
                 {t('serverDetail.revert')}
               </Button>
               <Button
@@ -692,6 +718,7 @@ export function FilesTab({ id, token, editable, canWrite }: FilesTabProps) {
                 disabled={!writable || !fileDirty || fileSaving}
                 onClick={saveFile}
               >
+                <Save width={12} height={12} className="mr-1.5" />
                 {fileSaving ? t('serverDetail.saving') : t('serverDetail.save')}
               </Button>
             </div>

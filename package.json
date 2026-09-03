@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "concurrently -n backend,frontend -c cyan,magenta \"npm run dev:api\" \"npm run dev:ui\"",
     "dev:api": "npm run dev --prefix backend",
-    "dev:ui": "npm run dev --prefix frontend -- --port 5174",
+    "dev:ui": "wait-on -t 30000 http://localhost:4000/api/health && npm run dev --prefix frontend -- --port 5174",
     "dev:tmux": "bash scripts/dev-tmux.sh",
     "lint": "npm run lint --prefix backend && npm run lint --prefix frontend",
     "format": "npm run format --prefix backend && npm run format --prefix frontend",
@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
-    "husky": "^9.1.7"
+    "husky": "^9.1.7",
+    "wait-on": "^9.1.0"
   }
 }

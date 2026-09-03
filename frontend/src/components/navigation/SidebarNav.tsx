@@ -1,7 +1,16 @@
-import { useEffect, useState } from 'react';
+import { ComponentType, useEffect, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'pixelarticons/react';
+
+type IconComponent = ComponentType<{ width?: number; height?: number; className?: string }>;
 
 type SidebarNavProps = {
-  items: { value?: string; label?: string; divider?: boolean; danger?: boolean }[];
+  items: {
+    value?: string;
+    label?: string;
+    icon?: IconComponent;
+    divider?: boolean;
+    danger?: boolean;
+  }[];
   active?: string;
   onSelect: (value: string) => void;
   footer: any;
@@ -62,9 +71,7 @@ export function SidebarNav({
         )}
       </nav>
 
-      {footer && !collapsed && (
-        <div className="px-4 py-4 border-t border-line font-mono text-sm text-ink-3">{footer}</div>
-      )}
+      <div className="px-4 py-4 border-t border-line font-mono text-sm text-ink-3">{footer}</div>
 
       <button
         type="button"
@@ -72,12 +79,12 @@ export function SidebarNav({
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         aria-pressed={collapsed}
-        className={`flex items-center gap-3 px-4 py-3 border-t border-line text-ink-3 hover:text-ink hover:bg-bg-1 transition-colors cursor-pointer shrink-0 ${
+        className={`flex items-center gap-3 px-4 h-[59px] border-t border-line text-ink-3 hover:text-ink hover:bg-bg-1 transition-colors cursor-pointer shrink-0 ${
           collapsed ? 'justify-center px-0' : ''
         }`}
       >
-        <span className="w-6 h-6 border border-line-2 grid place-items-center font-mono text-xs shrink-0">
-          {collapsed ? '›' : '‹'}
+        <span className="w-6 h-6 border border-line-2 grid place-items-center shrink-0">
+          {collapsed ? <ChevronRight width={14} height={14} /> : <ChevronLeft width={14} height={14} />}
         </span>
       </button>
     </aside>
@@ -87,7 +94,7 @@ export function SidebarNav({
 function NavItem({ item, active, onSelect, collapsed }) {
   const danger = item.danger;
   const label = item.label ?? '';
-  const mark = label.slice(0, 2).toUpperCase();
+  const Icon = item.icon as IconComponent | undefined;
 
   return (
     <a
@@ -109,15 +116,19 @@ function NavItem({ item, active, onSelect, collapsed }) {
     >
       {collapsed ? (
         <span
-          className={`w-6 h-6 grid place-items-center shrink-0 font-mono text-[10px] font-bold border ${
+          className={`w-6 h-6 grid place-items-center shrink-0 border ${
             active ? 'bg-accent text-white border-accent' : 'bg-bg-2 text-current border-line-2'
           }`}
         >
-          {mark}
+          {Icon && <Icon width={14} height={14} />}
         </span>
       ) : (
         <>
-          <span className={`w-2 h-2 shrink-0 ${active ? 'bg-accent' : 'bg-current'}`} />
+          {Icon ? (
+            <Icon width={16} height={16} className="shrink-0" />
+          ) : (
+            <span className={`w-2 h-2 shrink-0 ${active ? 'bg-accent' : 'bg-current'}`} />
+          )}
           {label}
         </>
       )}

@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Docker, Gear, Home, Logout, Shield, Users, Wifi } from 'pixelarticons/react';
 import { LangSwitcher, SidebarNav } from '../../components';
 import { ServerEventsBridge } from '../../components/core/ServerEventsBridge';
 import { DashboardMain } from './Dashboard';
@@ -48,15 +49,15 @@ export default function PrivateRoute() {
   const active = useActiveNav(location);
 
   const navItems = [
-    { value: 'dashboard', label: t('adminDashboard.navDashboard') },
+    { value: 'dashboard', label: t('adminDashboard.navDashboard'), icon: Home },
     { divider: true },
-    { value: 'visitors', label: t('adminDashboard.navVisitors') },
-    { value: 'network', label: t('adminDashboard.navNetwork') },
-    { value: 'docker', label: t('docker.navTitle') },
-    ...(isSuperAdmin ? [{ value: 'admins', label: t('admins.navTitle') }] : []),
-    { value: 'settings', label: t('settings.title') },
+    { value: 'visitors', label: t('adminDashboard.navVisitors'), icon: Users },
+    { value: 'network', label: t('adminDashboard.navNetwork'), icon: Wifi },
+    { value: 'docker', label: t('docker.navTitle'), icon: Docker },
+    ...(isSuperAdmin ? [{ value: 'admins', label: t('admins.navTitle'), icon: Shield }] : []),
+    { value: 'settings', label: t('settings.title'), icon: Gear },
     { divider: true },
-    { value: 'logout', label: t('adminDashboard.navLogout'), danger: true },
+    { value: 'logout', label: t('adminDashboard.navLogout'), icon: Logout, danger: true },
   ];
 
   function handleNav(value: string) {
@@ -80,6 +81,7 @@ export default function PrivateRoute() {
   return (
     <div className="flex min-h-screen bg-bg">
       <ServerEventsBridge />
+
       <SidebarNav items={navItems} active={active} onSelect={handleNav} footer={<LangSwitcher />} />
 
       <main className="flex-1 min-w-0">

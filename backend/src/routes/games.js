@@ -343,6 +343,20 @@ router.delete('/:id', verifyToken, requirePermission('games:delete'), async (req
   res.json({ message: 'Game deleted' });
 });
 
+// GET /api/games/:id/dockerfile — raw content of the saved Dockerfile, for
+// populating the edit form (which otherwise has no way to know what's on disk).
+router.get('/:id/dockerfile', verifyToken, requirePermission('games:edit'), async (req, res) => {
+  const { id } = req.params;
+  if (!getGame(id)) return res.status(404).json({ error: 'Game not found' });
+
+  try {
+    const content = await readFile(join(GAMES_DIR, id, 'Dockerfile'), 'utf-8');
+    res.json({ content });
+  } catch {
+    res.status(404).json({ error: 'Dockerfile not found' });
+  }
+});
+
 // POST /api/games/:id/dockerfile
 router.post('/:id/dockerfile', verifyToken, requirePermission('games:edit'), async (req, res) => {
   const { id } = req.params;
