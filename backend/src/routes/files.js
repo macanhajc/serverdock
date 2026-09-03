@@ -4,6 +4,7 @@ import { join, dirname, basename, resolve as resolvePath, sep } from 'path';
 import { Router } from 'express';
 import multer from 'multer';
 import { verifyToken } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/permissions.js';
 import { getGame, getDataPath } from '../lib/gameLoader.js';
 import { getEffectiveStatus } from '../lib/containers.js';
 
@@ -177,110 +178,141 @@ router.get('/:id/download', verifyToken, async (req, res) => {
 });
 
 // POST /api/files/:id/mkdir
-router.post('/:id/mkdir', verifyToken, requireStopped, async (req, res) => {
-  const game = getGame(req.params.id);
-  if (!game) return res.status(404).json({ error: 'Game not found' });
+router.post(
+  '/:id/mkdir',
+  verifyToken,
+  requirePermission('files:write'),
+  requireStopped,
+  async (req, res) => {
+    const game = getGame(req.params.id);
+    if (!game) return res.status(404).json({ error: 'Game not found' });
 
-  const clientPath = req.body?.path;
-  if (!clientPath) return res.status(400).json({ error: 'path is required' });
+    const clientPath = req.body?.path;
+    if (!clientPath) return res.status(400).json({ error: 'path is required' });
 
-  const root = getDataPath(game.id);
-  const resolved = sandboxResolve(root, clientPath);
-  if (!resolved) return res.status(403).json({ error: 'Path not allowed' });
+    const root = getDataPath(game.id);
+    const resolved = sandboxResolve(root, clientPath);
+    if (!resolved) return res.status(403).json({ error: 'Path not allowed' });
 
-  await mkdir(resolved, { recursive: true });
-  res.status(201).json({ message: 'Folder created' });
-});
+    await mkdir(resolved, { recursive: true });
+    res.status(201).json({ message: 'Folder created' });
+  }
+);
 
 // POST /api/files/:id/upload?path=<dir>
-router.post('/:id/upload', verifyToken, requireStopped, upload.array('files'), async (req, res) => {
-  const game = getGame(req.params.id);
-  if (!game) return res.status(404).json({ error: 'Game not found' });
+router.post(
+  '/:id/upload',
+  verifyToken,
+  requirePermission('files:write'),
+  requireStopped,
+  upload.array('files'),
+  async (req, res) => {
+    const game = getGame(req.params.id);
+    if (!game) return res.status(404).json({ error: 'Game not found' });
 
-  const root = getDataPath(game.id);
-  const resolved = sandboxResolve(root, req.query.path ?? '/');
-  if (!resolved) return res.status(403).json({ error: 'Path not allowed' });
+    const root = getDataPath(game.id);
+    const resolved = sandboxResolve(root, req.query.path ?? '/');
+    if (!resolved) return res.status(403).json({ error: 'Path not allowed' });
 
-  const files = req.files ?? [];
-  if (!files.length) return res.status(400).json({ error: 'No files provided' });
+    const files = req.files ?? [];
+    if (!files.length) return res.status(400).json({ error: 'No files provided' });
 
-  const results = [];
-  for (const file of files) {
-    const safeName = file.originalname.replace(/[/\\]/g, '_');
-    const target = join(resolved, safeName);
-    if (!withinSandbox(root, target)) {
-      results.push({ name: safeName, error: 'Path not allowed' });
-      continue;
+    const results = [];
+    for (const file of files) {
+      const safeName = file.originalname.replace(/[/\\]/g, '_');
+      const target = join(resolved, safeName);
+      if (!withinSandbox(root, target)) {
+        results.push({ name: safeName, error: 'Path not allowed' });
+        continue;
+      }
+      await writeFile(target, file.buffer);
+      results.push({ name: safeName, size: file.size });
     }
-    await writeFile(target, file.buffer);
-    results.push({ name: safeName, size: file.size });
-  }
 
-  res.json({ uploaded: results });
-});
+    res.json({ uploaded: results });
+  }
+);
 
 // PUT /api/files/:id/write
-router.put('/:id/write', verifyToken, requireStopped, async (req, res) => {
-  const game = getGame(req.params.id);
-  if (!game) return res.status(404).json({ error: 'Game not found' });
+router.put(
+  '/:id/write',
+  verifyToken,
+  requirePermission('files:write'),
+  requireStopped,
+  async (req, res) => {
+    const game = getGame(req.params.id);
+    if (!game) return res.status(404).json({ error: 'Game not found' });
 
-  const { path: clientPath, content } = req.body ?? {};
-  if (!clientPath) return res.status(400).json({ error: 'path is required' });
-  if (content === undefined) return res.status(400).json({ error: 'content is required' });
+    const { path: clientPath, content } = req.body ?? {};
+    if (!clientPath) return res.status(400).json({ error: 'path is required' });
+    if (content === undefined) return res.status(400).json({ error: 'content is required' });
 
-  // For write, the file may not exist yet — pure path math only, no realpath
-  const root = getDataPath(game.id);
-  const resolved = sandboxResolve(root, clientPath);
-  if (!resolved) return res.status(403).json({ error: 'Path not allowed' });
+    // For write, the file may not exist yet — pure path math only, no realpath
+    const root = getDataPath(game.id);
+    const resolved = sandboxResolve(root, clientPath);
+    if (!resolved) return res.status(403).json({ error: 'Path not allowed' });
 
-  const tmp = resolved + '.tmp';
-  await writeFile(tmp, content, 'utf-8');
-  await rename(tmp, resolved);
+    const tmp = resolved + '.tmp';
+    await writeFile(tmp, content, 'utf-8');
+    await rename(tmp, resolved);
 
-  res.json({ message: 'File saved' });
-});
+    res.json({ message: 'File saved' });
+  }
+);
 
 // PATCH /api/files/:id/rename
-router.patch('/:id/rename', verifyToken, requireStopped, async (req, res) => {
-  const game = getGame(req.params.id);
-  if (!game) return res.status(404).json({ error: 'Game not found' });
+router.patch(
+  '/:id/rename',
+  verifyToken,
+  requirePermission('files:write'),
+  requireStopped,
+  async (req, res) => {
+    const game = getGame(req.params.id);
+    if (!game) return res.status(404).json({ error: 'Game not found' });
 
-  const { path: clientPath, newName } = req.body ?? {};
-  if (!clientPath) return res.status(400).json({ error: 'path is required' });
-  if (!newName?.trim()) return res.status(400).json({ error: 'newName is required' });
+    const { path: clientPath, newName } = req.body ?? {};
+    if (!clientPath) return res.status(400).json({ error: 'path is required' });
+    if (!newName?.trim()) return res.status(400).json({ error: 'newName is required' });
 
-  const safeName = newName.trim();
-  if (safeName.includes('/') || safeName.includes('\\')) {
-    return res.status(400).json({ error: 'Name cannot contain path separators' });
+    const safeName = newName.trim();
+    if (safeName.includes('/') || safeName.includes('\\')) {
+      return res.status(400).json({ error: 'Name cannot contain path separators' });
+    }
+
+    const root = getDataPath(game.id);
+    const { real, err } = await sandboxRealpath(root, clientPath);
+    if (err === 403) return res.status(403).json({ error: 'Path not allowed' });
+    if (err === 404) return res.status(404).json({ error: 'Path not found' });
+
+    const target = join(dirname(real), safeName);
+    if (!withinSandbox(root, target)) return res.status(403).json({ error: 'Path not allowed' });
+
+    await rename(real, target);
+    res.json({ message: 'Renamed' });
   }
-
-  const root = getDataPath(game.id);
-  const { real, err } = await sandboxRealpath(root, clientPath);
-  if (err === 403) return res.status(403).json({ error: 'Path not allowed' });
-  if (err === 404) return res.status(404).json({ error: 'Path not found' });
-
-  const target = join(dirname(real), safeName);
-  if (!withinSandbox(root, target)) return res.status(403).json({ error: 'Path not allowed' });
-
-  await rename(real, target);
-  res.json({ message: 'Renamed' });
-});
+);
 
 // DELETE /api/files/:id/delete
-router.delete('/:id/delete', verifyToken, requireStopped, async (req, res) => {
-  const game = getGame(req.params.id);
-  if (!game) return res.status(404).json({ error: 'Game not found' });
+router.delete(
+  '/:id/delete',
+  verifyToken,
+  requirePermission('files:write'),
+  requireStopped,
+  async (req, res) => {
+    const game = getGame(req.params.id);
+    if (!game) return res.status(404).json({ error: 'Game not found' });
 
-  const clientPath = req.body?.path;
-  if (!clientPath) return res.status(400).json({ error: 'path is required' });
+    const clientPath = req.body?.path;
+    if (!clientPath) return res.status(400).json({ error: 'path is required' });
 
-  const root = getDataPath(game.id);
-  const { real, err } = await sandboxRealpath(root, clientPath);
-  if (err === 403) return res.status(403).json({ error: 'Path not allowed' });
-  if (err === 404) return res.status(404).json({ error: 'Path not found' });
+    const root = getDataPath(game.id);
+    const { real, err } = await sandboxRealpath(root, clientPath);
+    if (err === 403) return res.status(403).json({ error: 'Path not allowed' });
+    if (err === 404) return res.status(404).json({ error: 'Path not found' });
 
-  await rm(real, { recursive: true, force: true });
-  res.json({ message: 'Deleted' });
-});
+    await rm(real, { recursive: true, force: true });
+    res.json({ message: 'Deleted' });
+  }
+);
 
 export default router;

@@ -2,6 +2,7 @@ import { createReadStream } from 'fs';
 import { join, extname, basename } from 'path';
 import { Router } from 'express';
 import { verifyToken } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/permissions.js';
 import { getGames, getGame, GAMES_DIR } from '../lib/gameLoader.js';
 import {
   getEffectiveStatus,
@@ -36,7 +37,8 @@ function getMaintenanceSoon(game) {
   const now = Date.now();
   let soonest = null;
   for (const schedule of game.schedules ?? []) {
-    if (!schedule.enabled || (schedule.action !== 'restart' && schedule.action !== 'stop')) continue;
+    if (!schedule.enabled || (schedule.action !== 'restart' && schedule.action !== 'stop'))
+      continue;
     const nextRun = getScheduleNextRun(schedule.id);
     if (!nextRun) continue;
     const at = new Date(nextRun).getTime();
@@ -60,9 +62,7 @@ async function buildServerResponse(game, status, host) {
     name: game.name,
     description: game.description ?? null,
     image: game.image,
-    avatarUrl: game.avatar
-      ? `/api/servers/${game.id}/avatar?v=${game.avatarVersion ?? 0}`
-      : null,
+    avatarUrl: game.avatar ? `/api/servers/${game.id}/avatar?v=${game.avatarVersion ?? 0}` : null,
     storeUrl: game.storeUrl ?? null,
     status,
     players: getPlayers(game.id),
@@ -89,7 +89,11 @@ async function buildServerResponse(game, status, host) {
     // the broadcast template is just command syntax, not a secret, so it's safe to
     // expose and is what the admin Console tab needs to show the quick-action button.
     rcon: game.rcon
-      ? { enabled: !!game.rcon.enabled, port: game.rcon.port ?? null, commands: game.rcon.commands ?? null }
+      ? {
+          enabled: !!game.rcon.enabled,
+          port: game.rcon.port ?? null,
+          commands: game.rcon.commands ?? null,
+        }
       : null,
     maintenanceSoon: getMaintenanceSoon(game),
   };
@@ -146,7 +150,7 @@ router.get('/:id/avatar', async (req, res) => {
 // POST /api/servers/:id/start — JWT
 // startContainer broadcasts every phase (pulling/starting/running) over the
 // status room; the held request still reports the final outcome to the caller.
-router.post('/:id/start', verifyToken, async (req, res) => {
+router.post('/:id/start', verifyToken, requirePermission('servers:power'), async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
   await startContainer(game);
@@ -154,7 +158,7 @@ router.post('/:id/start', verifyToken, async (req, res) => {
 });
 
 // POST /api/servers/:id/stop — JWT
-router.post('/:id/stop', verifyToken, async (req, res) => {
+router.post('/:id/stop', verifyToken, requirePermission('servers:power'), async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
   setPlayers(game.id, null); // before the stop so the final emission carries no players
@@ -164,7 +168,7 @@ router.post('/:id/stop', verifyToken, async (req, res) => {
 });
 
 // POST /api/servers/:id/restart — JWT
-router.post('/:id/restart', verifyToken, async (req, res) => {
+router.post('/:id/restart', verifyToken, requirePermission('servers:power'), async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
   await restartContainer(game.id);
@@ -172,10 +176,11 @@ router.post('/:id/restart', verifyToken, async (req, res) => {
 });
 
 // POST /api/servers/:id/rcon — JWT
-router.post('/:id/rcon', verifyToken, async (req, res) => {
+router.post('/:id/rcon', verifyToken, requirePermission('console:write'), async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
-  if (!game.rcon?.enabled) return res.status(400).json({ error: 'RCON is not enabled for this game' });
+  if (!game.rcon?.enabled)
+    return res.status(400).json({ error: 'RCON is not enabled for this game' });
 
   const { command } = req.body ?? {};
   if (!command || typeof command !== 'string' || !command.trim()) {
@@ -196,7 +201,7 @@ router.post('/:id/rcon', verifyToken, async (req, res) => {
 });
 
 // POST /api/servers/:id/reset — JWT
-router.post('/:id/reset', verifyToken, async (req, res) => {
+router.post('/:id/reset', verifyToken, requirePermission('servers:reset'), async (req, res) => {
   if (req.body?.confirm !== true) {
     return res.status(400).json({ error: 'Reset not confirmed' });
   }

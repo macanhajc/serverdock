@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { verifyToken } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/permissions.js';
 import docker from '../lib/docker.js';
 
 const router = Router();
@@ -19,17 +20,22 @@ router.get('/images', verifyToken, async (req, res) => {
 });
 
 // DELETE /api/docker/images/:id
-router.delete('/images/:id', verifyToken, async (req, res) => {
-  try {
-    await docker.getImage(req.params.id).remove({ force: true });
-    res.json({ message: 'Image removed' });
-  } catch (err) {
-    if (err.statusCode === 404) return res.status(404).json({ error: 'Image not found' });
-    if (err.statusCode === 409)
-      return res.status(409).json({ error: err.message ?? 'Image is in use' });
-    throw err;
+router.delete(
+  '/images/:id',
+  verifyToken,
+  requirePermission('settings:manage'),
+  async (req, res) => {
+    try {
+      await docker.getImage(req.params.id).remove({ force: true });
+      res.json({ message: 'Image removed' });
+    } catch (err) {
+      if (err.statusCode === 404) return res.status(404).json({ error: 'Image not found' });
+      if (err.statusCode === 409)
+        return res.status(409).json({ error: err.message ?? 'Image is in use' });
+      throw err;
+    }
   }
-});
+);
 
 // GET /api/docker/containers
 router.get('/containers', verifyToken, async (req, res) => {
@@ -48,14 +54,19 @@ router.get('/containers', verifyToken, async (req, res) => {
 });
 
 // DELETE /api/docker/containers/:id
-router.delete('/containers/:id', verifyToken, async (req, res) => {
-  try {
-    await docker.getContainer(req.params.id).remove({ force: true });
-    res.json({ message: 'Container removed' });
-  } catch (err) {
-    if (err.statusCode === 404) return res.status(404).json({ error: 'Container not found' });
-    throw err;
+router.delete(
+  '/containers/:id',
+  verifyToken,
+  requirePermission('settings:manage'),
+  async (req, res) => {
+    try {
+      await docker.getContainer(req.params.id).remove({ force: true });
+      res.json({ message: 'Container removed' });
+    } catch (err) {
+      if (err.statusCode === 404) return res.status(404).json({ error: 'Container not found' });
+      throw err;
+    }
   }
-});
+);
 
 export default router;

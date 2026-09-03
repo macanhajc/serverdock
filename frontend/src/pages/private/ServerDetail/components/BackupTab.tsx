@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../../../../context/AuthContext';
 import { useToast } from '../../../../context/ToastContext';
 import { Button } from '../../../../components/core/Button';
 import { ConfirmModal } from '../../../../components/core/ConfirmModal';
@@ -35,6 +36,8 @@ interface BackupTabProps {
 export function BackupTab({ id, token, isRunning }: BackupTabProps) {
   const { t } = useTranslation();
   const { addToast } = useToast();
+  const { hasPermission } = useAuth();
+  const canManage = hasPermission('backups:manage');
 
   const [backups, setBackups] = useState<BackupEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -216,15 +219,13 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
           className="ml-auto flex items-center gap-2"
           title={t('serverDetail.backupRetentionHint')}
         >
-          <span className="font-mono text-xs text-ink-3">
-            {t('serverDetail.backupRetention')}
-          </span>
+          <span className="font-mono text-xs text-ink-3">{t('serverDetail.backupRetention')}</span>
           <input
             type="number"
             min={0}
             max={1000}
             value={retentionDraft}
-            disabled={retentionSaving}
+            disabled={retentionSaving || !canManage}
             onChange={(e) => setRetentionDraft(e.target.value)}
             onBlur={saveRetention}
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
@@ -232,7 +233,7 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
             style={{ borderRadius: 0 }}
           />
         </div>
-        {!showCreateForm && (
+        {!showCreateForm && canManage && (
           <Button size="sm" variant="primary" onClick={() => setShowCreateForm(true)}>
             {t('serverDetail.backupCreate')}
           </Button>
@@ -240,7 +241,7 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
       </div>
 
       {/* Create form */}
-      {showCreateForm && (
+      {showCreateForm && canManage && (
         <div className="px-6 py-5 border-b border-line bg-bg-1 flex flex-col gap-3">
           {isRunning && (
             <div className="font-mono text-xs text-yellow">
@@ -282,10 +283,14 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
         <div className="px-6 py-8 font-mono text-xs text-ink-3">{t('common.loading')}</div>
       ) : backups.length === 0 && !showCreateForm ? (
         <div className="px-6 py-12 flex flex-col items-center gap-4">
-          <p className="font-mono text-sm text-ink-3 text-center">{t('serverDetail.backupEmpty')}</p>
-          <Button variant="primary" onClick={() => setShowCreateForm(true)}>
-            {t('serverDetail.backupCreate')}
-          </Button>
+          <p className="font-mono text-sm text-ink-3 text-center">
+            {t('serverDetail.backupEmpty')}
+          </p>
+          {canManage && (
+            <Button variant="primary" onClick={() => setShowCreateForm(true)}>
+              {t('serverDetail.backupCreate')}
+            </Button>
+          )}
         </div>
       ) : (
         <div className="divide-y divide-line">
@@ -299,7 +304,9 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     <span className="font-mono text-xs text-ink-2">{fmtDate(b.createdAt)}</span>
                     <span className="font-mono text-xs text-ink-3">·</span>
-                    <span className="font-mono text-xs text-ink-3">{relativeTime(b.createdAt)}</span>
+                    <span className="font-mono text-xs text-ink-3">
+                      {relativeTime(b.createdAt)}
+                    </span>
                     <span className="font-mono text-xs text-ink-3">·</span>
                     <span className="font-mono text-xs text-ink-3">{fmtBytes(b.size)}</span>
                   </div>
@@ -310,22 +317,26 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
                       ? t('serverDetail.backupDownloading', { pct: downloadPct })
                       : t('serverDetail.backupDownload')}
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    onClick={() => setConfirmRestore(b)}
-                    disabled={busy}
-                  >
-                    {busy ? t('serverDetail.backupRestoring') : t('serverDetail.backupRestore')}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    onClick={() => setConfirmDelete(b)}
-                    disabled={busy}
-                  >
-                    {t('common.delete')}
-                  </Button>
+                  {canManage && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => setConfirmRestore(b)}
+                        disabled={busy}
+                      >
+                        {busy ? t('serverDetail.backupRestoring') : t('serverDetail.backupRestore')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        onClick={() => setConfirmDelete(b)}
+                        disabled={busy}
+                      >
+                        {t('common.delete')}
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             );

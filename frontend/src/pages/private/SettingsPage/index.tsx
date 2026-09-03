@@ -25,7 +25,8 @@ interface SavedSettings {
 
 export default function SettingsPage() {
   const { t } = useTranslation();
-  const { token } = useAuth();
+  const { token, hasPermission } = useAuth();
+  const canManage = hasPermission('settings:manage');
   const { addToast } = useToast();
 
   const [serverHost, setServerHost] = useState('');
@@ -263,6 +264,7 @@ export default function SettingsPage() {
                         label={t('settings.discordLabel')}
                         hint={t('settings.discordHint')}
                         mono
+                        disabled={!canManage}
                         placeholder={t('settings.discordPlaceholder')}
                         value={discordWebhookUrl}
                         onChange={(e) => setDiscordWebhookUrl(e.target.value)}
@@ -270,7 +272,7 @@ export default function SettingsPage() {
                     </div>
                     <Button
                       size="sm"
-                      disabled={!saved.discordWebhookUrl || discordTesting}
+                      disabled={!canManage || !saved.discordWebhookUrl || discordTesting}
                       onClick={handleTestDiscord}
                     >
                       {discordTesting ? '…' : t('settings.discordTest')}
@@ -285,25 +287,41 @@ export default function SettingsPage() {
                   </h3>
                   <p className="m-0 text-xs text-ink-3">{t('settings.pushDesc')}</p>
                   {!pushSupported ? (
-                    <div className="font-mono text-xs text-ink-3">{t('settings.pushNotSupported')}</div>
+                    <div className="font-mono text-xs text-ink-3">
+                      {t('settings.pushNotSupported')}
+                    </div>
                   ) : pushPermission === 'denied' ? (
-                    <div className="font-mono text-xs text-yellow">{t('settings.pushPermissionDenied')}</div>
+                    <div className="font-mono text-xs text-yellow">
+                      {t('settings.pushPermissionDenied')}
+                    </div>
                   ) : (
                     <div className="flex items-center gap-3">
                       <span className="font-mono text-xs text-ink-3">
-                        {pushSubscription ? t('settings.pushSubscribed') : t('settings.pushNotSubscribed')}
+                        {pushSubscription
+                          ? t('settings.pushSubscribed')
+                          : t('settings.pushNotSubscribed')}
                       </span>
                       {pushSubscription ? (
                         <>
                           <Button size="sm" disabled={pushTesting} onClick={handleTestPush}>
                             {pushTesting ? '…' : t('settings.pushTest')}
                           </Button>
-                          <Button size="sm" variant="danger" disabled={pushBusy} onClick={handlePushUnsubscribe}>
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            disabled={pushBusy}
+                            onClick={handlePushUnsubscribe}
+                          >
                             {t('settings.pushUnsubscribe')}
                           </Button>
                         </>
                       ) : (
-                        <Button size="sm" variant="primary" disabled={pushBusy || !vapidPublicKey} onClick={handlePushSubscribe}>
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          disabled={pushBusy || !vapidPublicKey}
+                          onClick={handlePushSubscribe}
+                        >
                           {pushBusy ? '…' : t('settings.pushSubscribe')}
                         </Button>
                       )}
@@ -323,6 +341,7 @@ export default function SettingsPage() {
                   label={t('settings.serverHostLabel')}
                   hint={t('settings.serverHostHint')}
                   mono
+                  disabled={!canManage}
                   placeholder={t('settings.serverHostPlaceholder')}
                   value={serverHost}
                   onChange={(e) => setServerHost(e.target.value)}
@@ -348,6 +367,7 @@ export default function SettingsPage() {
                 <div className="flex flex-col gap-4 border border-dashed bg-line/10 border-line-2 p-4">
                   <Toggle
                     checked={registrationOpen}
+                    disabled={!canManage}
                     onChange={(v: boolean) => setRegistrationOpen(v)}
                     label={t('settings.registrationOpenLabel')}
                   />
@@ -379,12 +399,13 @@ export default function SettingsPage() {
                     label={t('settings.dataRootLabel')}
                     hint={t('settings.dataRootHint')}
                     mono
+                    disabled={!canManage}
                     placeholder={t('settings.dataRootPlaceholder')}
                     value={dataRoot}
                     onChange={(e) => setDataRoot(e.target.value)}
                   />
 
-                  {dataRoot.trim() && (
+                  {canManage && dataRoot.trim() && (
                     <button
                       type="button"
                       onClick={() => setDataRoot('')}
@@ -427,7 +448,9 @@ export default function SettingsPage() {
             {/* Danger Zone */}
             <section>
               <div className="border-t border-line pt-6">
-                <h3 className="m-0 mb-1 text-sm font-bold text-red">{t('settings.dangerZoneTitle')}</h3>
+                <h3 className="m-0 mb-1 text-sm font-bold text-red">
+                  {t('settings.dangerZoneTitle')}
+                </h3>
                 <p className="m-0 mb-5 text-xs text-ink-3">{t('settings.dangerZoneDesc')}</p>
 
                 <div
@@ -439,16 +462,20 @@ export default function SettingsPage() {
                 >
                   <div className="flex flex-col gap-0.5">
                     <span className="font-mono text-xs text-ink">{t('settings.wipeAllTitle')}</span>
-                    <span className="font-mono text-xs text-ink-3">{t('settings.wipeAllDesc')}</span>
+                    <span className="font-mono text-xs text-ink-3">
+                      {t('settings.wipeAllDesc')}
+                    </span>
                   </div>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    disabled={wiping}
-                    onClick={() => setConfirmWipe(true)}
-                  >
-                    {wiping ? t('settings.wiping') : t('settings.wipeAllBtn')}
-                  </Button>
+                  {canManage && (
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      disabled={wiping}
+                      onClick={() => setConfirmWipe(true)}
+                    >
+                      {wiping ? t('settings.wiping') : t('settings.wipeAllBtn')}
+                    </Button>
+                  )}
                 </div>
               </div>
             </section>
@@ -463,9 +490,11 @@ export default function SettingsPage() {
           backdropFilter: 'blur(6px)',
         }}
       >
-        <Button variant="primary" disabled={!dirty || saving || !loaded} onClick={handleSave}>
-          {saving ? t('settings.saving') : t('settings.save')}
-        </Button>
+        {canManage && (
+          <Button variant="primary" disabled={!dirty || saving || !loaded} onClick={handleSave}>
+            {saving ? t('settings.saving') : t('settings.save')}
+          </Button>
+        )}
       </div>
 
       {confirmWipe && (
@@ -473,7 +502,10 @@ export default function SettingsPage() {
           title={t('settings.wipeConfirmTitle')}
           message={t('settings.wipeConfirmMessage')}
           confirmLabel={t('settings.wipeConfirmBtn')}
-          onConfirm={() => { setConfirmWipe(false); handleWipe(); }}
+          onConfirm={() => {
+            setConfirmWipe(false);
+            handleWipe();
+          }}
           onCancel={() => setConfirmWipe(false)}
         />
       )}

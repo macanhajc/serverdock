@@ -46,7 +46,8 @@ export default function GameForm() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const isEdit = !!id;
-  const { token } = useAuth();
+  const { token, hasPermission } = useAuth();
+  const canSave = hasPermission(isEdit ? 'games:edit' : 'games:create');
   const navigate = useNavigate();
 
   const [name, setName] = useState('');
@@ -355,9 +356,7 @@ export default function GameForm() {
             port: Number(rconPort),
             password: rconPassword.trim(),
             listCommand: rconListCommand.trim() || undefined,
-            commands: rconBroadcastCmd.trim()
-              ? { broadcast: rconBroadcastCmd.trim() }
-              : undefined,
+            commands: rconBroadcastCmd.trim() ? { broadcast: rconBroadcastCmd.trim() } : undefined,
           }
         : { enabled: false },
     };
@@ -574,7 +573,10 @@ export default function GameForm() {
             />
           </FormSection>
 
-          <FormSection title={t('gameForm.presentationTitle')} desc={t('gameForm.presentationDesc')}>
+          <FormSection
+            title={t('gameForm.presentationTitle')}
+            desc={t('gameForm.presentationDesc')}
+          >
             <div className="grid grid-cols-[120px_1fr] gap-[14px_18px] items-start">
               <div className="flex flex-col gap-2">
                 <div className="w-30 h-30 border border-line bg-bg-2 overflow-hidden grid place-items-center">
@@ -586,7 +588,7 @@ export default function GameForm() {
                     </span>
                   )}
                 </div>
-                <div className="flex gap-2" style={{width: "max-content"}}>
+                <div className="flex gap-2" style={{ width: 'max-content' }}>
                   <Button size="sm" onClick={() => avatarInputRef.current?.click()}>
                     {t('gameForm.avatarUpload')}
                   </Button>
@@ -917,7 +919,7 @@ export default function GameForm() {
           backdropFilter: 'blur(6px)',
         }}
       >
-        {isEdit && (
+        {isEdit && hasPermission('games:delete') && (
           <Button variant="danger" disabled={saving} onClick={() => setConfirmDelete(true)}>
             {t('gameForm.actDelete')}
           </Button>
@@ -937,15 +939,21 @@ export default function GameForm() {
 
         {error && <span className="font-mono text-sm text-red max-w-70">{error}</span>}
 
-        <Button variant="ghost" disabled={saving} onClick={() => guardLeave(() => navigate('/admin'))}>
+        <Button
+          variant="ghost"
+          disabled={saving}
+          onClick={() => guardLeave(() => navigate('/admin'))}
+        >
           {t('gameForm.actCancel')}
         </Button>
 
-        <Button variant="primary" disabled={saving} onClick={() => handleSave(false)}>
-          {saving && !buildRunning ? t('gameForm.actSaving') : t('gameForm.actSave')}
-        </Button>
+        {canSave && (
+          <Button variant="primary" disabled={saving} onClick={() => handleSave(false)}>
+            {saving && !buildRunning ? t('gameForm.actSaving') : t('gameForm.actSave')}
+          </Button>
+        )}
 
-        {isLocalImage && (
+        {isLocalImage && canSave && (
           <Button
             variant="primary"
             disabled={saving || buildRunning}

@@ -20,7 +20,7 @@ interface DashboardMainProps {
 
 export function DashboardMain({ navigate }: DashboardMainProps) {
   const { t } = useTranslation();
-  const { token } = useAuth();
+  const { token, hasPermission } = useAuth();
   const { addToast } = useToast();
   const [servers, setServers] = useState<Server[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -115,73 +115,73 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
     }
   }
 
-  const callAction = useCallback(async (id: string, action: 'start' | 'stop' | 'restart' | 'reset') => {
-    setLoading((prev) => ({ ...prev, [id]: action }));
-    const labels: Record<string, string> = {
-      start: t('adminDashboard.actionStart'),
-      stop: t('adminDashboard.actionStop'),
-      restart: t('adminDashboard.actionRestart'),
-      reset: t('adminDashboard.actionReset'),
-    };
-    try {
-      const body = action === 'reset' ? { confirm: true } : {};
-      const res = await fetch(`/api/servers/${id}/${action}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (res.ok) {
-        addToast(labels[action] ?? 'Done');
-        if (action === 'reset') {
-          fetch(`/api/servers/${id}`)
-            .then((r) => (r.ok ? r.json() : Promise.reject()))
-            .then((updated: Server) => {
-              setServers((prev) =>
-                prev.map((s) => (s.id === id ? { ...s, diskUsed: updated.diskUsed } : s))
-              );
-            })
-            .catch(() => {});
-        }
-        clearActionTimer(id);
-        actionTimers.current[id] = setTimeout(() => {
-          fetch(`/api/servers/${id}`)
-            .then((r) => (r.ok ? r.json() : Promise.reject()))
-            .then((updated: Server) => {
-              setServers((prev) => prev.map((s) => (s.id === id ? { ...s, ...updated } : s)));
-            })
-            .catch(() => {})
-            .finally(() => {
-              delete actionTimers.current[id];
-              setLoading((prev) => {
-                const n = { ...prev };
-                delete n[id];
-                return n;
+  const callAction = useCallback(
+    async (id: string, action: 'start' | 'stop' | 'restart' | 'reset') => {
+      setLoading((prev) => ({ ...prev, [id]: action }));
+      const labels: Record<string, string> = {
+        start: t('adminDashboard.actionStart'),
+        stop: t('adminDashboard.actionStop'),
+        restart: t('adminDashboard.actionRestart'),
+        reset: t('adminDashboard.actionReset'),
+      };
+      try {
+        const body = action === 'reset' ? { confirm: true } : {};
+        const res = await fetch(`/api/servers/${id}/${action}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) {
+          addToast(labels[action] ?? 'Done');
+          if (action === 'reset') {
+            fetch(`/api/servers/${id}`)
+              .then((r) => (r.ok ? r.json() : Promise.reject()))
+              .then((updated: Server) => {
+                setServers((prev) =>
+                  prev.map((s) => (s.id === id ? { ...s, diskUsed: updated.diskUsed } : s))
+                );
+              })
+              .catch(() => {});
+          }
+          clearActionTimer(id);
+          actionTimers.current[id] = setTimeout(() => {
+            fetch(`/api/servers/${id}`)
+              .then((r) => (r.ok ? r.json() : Promise.reject()))
+              .then((updated: Server) => {
+                setServers((prev) => prev.map((s) => (s.id === id ? { ...s, ...updated } : s)));
+              })
+              .catch(() => {})
+              .finally(() => {
+                delete actionTimers.current[id];
+                setLoading((prev) => {
+                  const n = { ...prev };
+                  delete n[id];
+                  return n;
+                });
               });
-            });
-        }, 15_000);
-      } else {
-        const data = await res.json().catch(() => ({}));
-        addToast(data.error ?? `${action} failed`, 'error');
+          }, 15_000);
+        } else {
+          const data = await res.json().catch(() => ({}));
+          addToast(data.error ?? `${action} failed`, 'error');
+          setLoading((prev) => {
+            const n = { ...prev };
+            delete n[id];
+            return n;
+          });
+        }
+      } catch {
+        addToast(`${action} failed — could not reach server`, 'error');
         setLoading((prev) => {
           const n = { ...prev };
           delete n[id];
           return n;
         });
       }
-    } catch {
-      addToast(`${action} failed — could not reach server`, 'error');
-      setLoading((prev) => {
-        const n = { ...prev };
-        delete n[id];
-        return n;
-      });
-    }
-  }, [token, t, addToast, clearActionTimer]);
-
-  const onWipeRequest = useCallback(
-    (id: string, name: string) => setConfirmWipe({ id, name }),
-    []
+    },
+    [token, t, addToast, clearActionTimer]
   );
+
+  const onWipeRequest = useCallback((id: string, name: string) => setConfirmWipe({ id, name }), []);
 
   useEffect(() => {
     function onStatusUpdate({
@@ -299,7 +299,7 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
       fetch('/api/vpn/status', { headers: { Authorization: `Bearer ${token}` } })
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then((data: VpnStatus) => {
-          setUsersOnline(data.peers.filter((p) => p.online && !p.name.includes("proxy")).length);
+          setUsersOnline(data.peers.filter((p) => p.online && !p.name.includes('proxy')).length);
           setVpnStatus(data);
           setVpnLoaded(true);
         })
@@ -409,12 +409,14 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
 
         <div className="flex flex-row justify-between items-center border border-line bg-bg-1 px-5 py-4 mb-6">
           <div className="flex flex-1 items-center gap-8">
-            <div className='flex flex-col flex-1'>
+            <div className="flex flex-col flex-1">
               <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
                 {t('adminDashboard.serversCardLabel')}
               </div>
               <div className="flex flex-1 items-baseline gap-2">
-                <span className="text-[26px] font-bold tabular-nums leading-none">{onlineCount}</span>
+                <span className="text-[26px] font-bold tabular-nums leading-none">
+                  {onlineCount}
+                </span>
                 <span className="font-mono text-sm text-ink-3">
                   {t('adminDashboard.onlineOfTotal', { total: totalCount })}
                 </span>
@@ -426,7 +428,9 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
                 {t('adminDashboard.playersCardLabel')}
               </div>
               <div className="flex items-baseline gap-2">
-                <span className="text-[26px] font-bold tabular-nums leading-none">{usersOnline}</span>
+                <span className="text-[26px] font-bold tabular-nums leading-none">
+                  {usersOnline}
+                </span>
                 <span className="font-mono text-sm text-ink-3">
                   {t('adminDashboard.playersOnline')}
                 </span>
@@ -434,25 +438,27 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
             </div>
           </div>
 
-          <div className='flex flex-1 justify-end gap-2'>
-            <input
-              ref={importInputRef}
-              type="file"
-              accept="application/json,.json"
-              className="hidden"
-              onChange={(e) => handleImportFile(e.target.files?.[0] ?? null)}
-            />
-            <Button
-              variant="ghost"
-              disabled={importing}
-              onClick={() => importInputRef.current?.click()}
-            >
-              {importing ? t('adminDashboard.importing') : t('adminDashboard.importGame')}
-            </Button>
-            <Button variant='primary' onClick={() => navigate('/admin/servers/new')}>
-              {t("adminDashboard.addGame")}
-            </Button>
-          </div>
+          {hasPermission('games:create') && (
+            <div className="flex flex-1 justify-end gap-2">
+              <input
+                ref={importInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(e) => handleImportFile(e.target.files?.[0] ?? null)}
+              />
+              <Button
+                variant="ghost"
+                disabled={importing}
+                onClick={() => importInputRef.current?.click()}
+              >
+                {importing ? t('adminDashboard.importing') : t('adminDashboard.importGame')}
+              </Button>
+              <Button variant="primary" onClick={() => navigate('/admin/servers/new')}>
+                {t('adminDashboard.addGame')}
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="border border-line bg-bg-1 overflow-x-auto">

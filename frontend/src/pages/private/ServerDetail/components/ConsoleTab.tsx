@@ -42,6 +42,8 @@ interface ConsoleTabProps {
   id: string;
   token: string | null;
   isRunning: boolean;
+  /** console:write permission — gates sending input, not viewing output */
+  canWrite: boolean;
   rcon?: Server['rcon'];
   /** The tab stays mounted in the background; true when it's the active tab */
   visible?: boolean;
@@ -54,6 +56,7 @@ export function ConsoleTab({
   id,
   token,
   isRunning,
+  canWrite,
   rcon,
   visible = true,
   lines,
@@ -89,9 +92,7 @@ export function ConsoleTab({
   const filteredLines =
     levelFilter === 'ALL'
       ? lines
-      : lines.filter(
-          (l) => l.level === levelFilter || l.level === 'DEBUG' || l.level === 'CMD'
-        );
+      : lines.filter((l) => l.level === levelFilter || l.level === 'DEBUG' || l.level === 'CMD');
 
   const trimmedQuery = searchQuery.trim();
   const matchIndices = useMemo(() => {
@@ -152,7 +153,7 @@ export function ConsoleTab({
 
   function sendConsoleCommand() {
     const cmd = consoleInput.trim();
-    if (!cmd || !isRunning) return;
+    if (!cmd || !isRunning || !canWrite) return;
     socket.emit('console:input', { id, input: cmd });
     // Echo into the shared output stream so the command and its log output interleave
     setLines((prev) => [...prev, { ts: nowTs(), level: 'CMD', line: `> ${cmd}` }]);
@@ -227,14 +228,14 @@ export function ConsoleTab({
 
   function sendRcon() {
     const cmd = rconInput.trim();
-    if (!cmd || rconSending || !isRunning) return;
+    if (!cmd || rconSending || !isRunning || !canWrite) return;
     setRconInput('');
     sendRconCommand(cmd);
   }
 
   function sendBroadcast() {
     const text = broadcastInput.trim();
-    if (!text || rconSending || !isRunning || !rcon?.commands?.broadcast) return;
+    if (!text || rconSending || !isRunning || !canWrite || !rcon?.commands?.broadcast) return;
     setBroadcastInput('');
     sendRconCommand(rcon.commands.broadcast.replace('{message}', text));
   }
@@ -373,7 +374,7 @@ export function ConsoleTab({
                   value={broadcastInput}
                   onChange={(e) => setBroadcastInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && sendBroadcast()}
-                  disabled={!isRunning || rconSending}
+                  disabled={!isRunning || !canWrite || rconSending}
                   placeholder={t('serverDetail.broadcastPlaceholder')}
                   spellCheck={false}
                   className="bg-bg-2 h-[34px] border border-line text-ink placeholder:text-ink-3 font-mono text-xs px-2 py-1 outline-none focus:border-[var(--focus-border)] w-56 disabled:opacity-40"
@@ -381,7 +382,7 @@ export function ConsoleTab({
                 <Button
                   size="sm"
                   variant="primary"
-                  disabled={!isRunning || rconSending || !broadcastInput.trim()}
+                  disabled={!isRunning || !canWrite || rconSending || !broadcastInput.trim()}
                   onClick={sendBroadcast}
                 >
                   {t('serverDetail.broadcastAction')}
@@ -421,16 +422,20 @@ export function ConsoleTab({
               value={consoleInput}
               onChange={(e) => setConsoleInput(e.target.value)}
               onKeyDown={onConsoleKeyDown}
-              disabled={!isRunning}
+              disabled={!isRunning || !canWrite}
               placeholder={
-                isRunning ? t('serverDetail.consolePlaceholder') : t('serverDetail.consoleNotRunning')
+                !canWrite
+                  ? t('serverDetail.consoleNoPermission')
+                  : isRunning
+                    ? t('serverDetail.consolePlaceholder')
+                    : t('serverDetail.consoleNotRunning')
               }
               spellCheck={false}
               className="flex-1 bg-transparent font-mono text-[12.5px] text-ink placeholder:text-ink-3 outline-none py-3 pr-3 min-w-0 disabled:opacity-40 disabled:cursor-not-allowed"
             />
             <button
               onClick={sendConsoleCommand}
-              disabled={!isRunning || !consoleInput.trim()}
+              disabled={!isRunning || !canWrite || !consoleInput.trim()}
               className="font-mono text-xs text-ink-3 hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed px-4 py-3 border-l border-line cursor-pointer shrink-0"
             >
               Send
@@ -443,7 +448,9 @@ export function ConsoleTab({
         <>
           <div ref={rconTermRef} className="flex-1 overflow-y-auto bg-bg-terminal p-[14px_20px]">
             {!isRunning && (
-              <span className="font-mono text-xs text-ink-3">{t('serverDetail.consoleNotRunning')}</span>
+              <span className="font-mono text-xs text-ink-3">
+                {t('serverDetail.consoleNotRunning')}
+              </span>
             )}
             {isRunning && rconHistory.length === 0 && (
               <span className="font-mono text-xs text-ink-3">{t('serverDetail.rconWaiting')}</span>
@@ -476,16 +483,20 @@ export function ConsoleTab({
               value={rconInput}
               onChange={(e) => setRconInput(e.target.value)}
               onKeyDown={onRconKeyDown}
-              disabled={!isRunning || rconSending}
+              disabled={!isRunning || !canWrite || rconSending}
               placeholder={
-                isRunning ? t('serverDetail.rconPlaceholder') : t('serverDetail.consoleNotRunning')
+                !canWrite
+                  ? t('serverDetail.consoleNoPermission')
+                  : isRunning
+                    ? t('serverDetail.rconPlaceholder')
+                    : t('serverDetail.consoleNotRunning')
               }
               spellCheck={false}
               className="flex-1 bg-transparent font-mono text-[12.5px] text-ink placeholder:text-ink-3 outline-none py-3 pr-3 min-w-0 disabled:opacity-40 disabled:cursor-not-allowed"
             />
             <button
               onClick={sendRcon}
-              disabled={!isRunning || !rconInput.trim() || rconSending}
+              disabled={!isRunning || !canWrite || !rconInput.trim() || rconSending}
               className="font-mono text-xs text-ink-3 hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed px-4 py-3 border-l border-line cursor-pointer shrink-0"
             >
               {rconSending ? '…' : 'Send'}

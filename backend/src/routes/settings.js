@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { verifyToken } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/permissions.js';
 import { getSettings, saveSettings } from '../lib/settingsStore.js';
 import { GAMES_DIR, getGames } from '../lib/gameLoader.js';
 import { resetContainer } from '../lib/containers.js';
@@ -17,16 +18,27 @@ router.get('/public', (req, res) => {
 
 // GET /api/settings
 router.get('/', verifyToken, (req, res) => {
-  const { dataRoot, serverHost, registrationOpen, discordWebhookUrl, vapidPublicKey, pushSubscriptions } = getSettings();
+  const {
+    dataRoot,
+    serverHost,
+    registrationOpen,
+    discordWebhookUrl,
+    vapidPublicKey,
+    pushSubscriptions,
+  } = getSettings();
   res.json({
-    dataRoot, serverHost, registrationOpen, discordWebhookUrl, vapidPublicKey,
+    dataRoot,
+    serverHost,
+    registrationOpen,
+    discordWebhookUrl,
+    vapidPublicKey,
     pushSubscriptionCount: (pushSubscriptions ?? []).length,
     defaultDataRoot: GAMES_DIR,
   });
 });
 
 // PUT /api/settings
-router.put('/', verifyToken, async (req, res) => {
+router.put('/', verifyToken, requirePermission('settings:manage'), async (req, res) => {
   const { dataRoot, serverHost, registrationOpen, discordWebhookUrl } = req.body ?? {};
   if (dataRoot !== undefined && typeof dataRoot !== 'string') {
     return res.status(400).json({ error: 'dataRoot must be a string' });
@@ -48,27 +60,36 @@ router.put('/', verifyToken, async (req, res) => {
   const updated = await saveSettings(patch);
   const { vapidPublicKey, pushSubscriptions } = updated;
   res.json({
-    dataRoot: updated.dataRoot, serverHost: updated.serverHost,
-    registrationOpen: updated.registrationOpen, discordWebhookUrl: updated.discordWebhookUrl,
-    vapidPublicKey, pushSubscriptionCount: (pushSubscriptions ?? []).length,
+    dataRoot: updated.dataRoot,
+    serverHost: updated.serverHost,
+    registrationOpen: updated.registrationOpen,
+    discordWebhookUrl: updated.discordWebhookUrl,
+    vapidPublicKey,
+    pushSubscriptionCount: (pushSubscriptions ?? []).length,
     defaultDataRoot: GAMES_DIR,
   });
 });
 
 // POST /api/settings/notify/test-discord — JWT
-router.post('/notify/test-discord', verifyToken, async (req, res) => {
-  const { discordWebhookUrl } = getSettings();
-  if (!discordWebhookUrl?.trim()) return res.status(400).json({ error: 'No webhook URL configured' });
-  try {
-    await testDiscordWebhook(discordWebhookUrl);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(502).json({ error: err.message });
+router.post(
+  '/notify/test-discord',
+  verifyToken,
+  requirePermission('settings:manage'),
+  async (req, res) => {
+    const { discordWebhookUrl } = getSettings();
+    if (!discordWebhookUrl?.trim())
+      return res.status(400).json({ error: 'No webhook URL configured' });
+    try {
+      await testDiscordWebhook(discordWebhookUrl);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(502).json({ error: err.message });
+    }
   }
-});
+);
 
 // POST /api/settings/wipe-all
-router.post('/wipe-all', verifyToken, async (req, res) => {
+router.post('/wipe-all', verifyToken, requirePermission('settings:manage'), async (req, res) => {
   if (req.body?.confirm !== true) {
     return res.status(400).json({ error: 'Wipe not confirmed' });
   }

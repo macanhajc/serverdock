@@ -43,14 +43,19 @@ function formatCreated(unix: number) {
 
 export default function DockerPage() {
   const { t } = useTranslation();
-  const { token } = useAuth();
+  const { token, hasPermission } = useAuth();
+  const canManage = hasPermission('settings:manage');
   const { addToast } = useToast();
 
   const [tab, setTab] = useState<Tab>('images');
   const [images, setImages] = useState<DockerImage[]>([]);
   const [containers, setContainers] = useState<DockerContainer[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [confirm, setConfirm] = useState<{ type: 'image' | 'container'; id: string; label: string } | null>(null);
+  const [confirm, setConfirm] = useState<{
+    type: 'image' | 'container';
+    id: string;
+    label: string;
+  } | null>(null);
   const [sizeSort, setSizeSort] = useState<'asc' | 'desc' | null>(null);
 
   const authHeader = { Authorization: `Bearer ${token}` };
@@ -86,11 +91,16 @@ export default function DockerPage() {
     if (!confirm) return;
     const { type, id, label } = confirm;
     setConfirm(null);
-    const url = type === 'image' ? `/api/docker/images/${encodeURIComponent(id)}` : `/api/docker/containers/${id}`;
+    const url =
+      type === 'image'
+        ? `/api/docker/images/${encodeURIComponent(id)}`
+        : `/api/docker/containers/${id}`;
     try {
       const res = await fetch(url, { method: 'DELETE', headers: authHeader });
       if (res.ok) {
-        addToast(t(type === 'image' ? 'docker.imageDeleted' : 'docker.containerDeleted', { label }));
+        addToast(
+          t(type === 'image' ? 'docker.imageDeleted' : 'docker.containerDeleted', { label })
+        );
         if (type === 'image') setImages((prev) => prev.filter((i) => i.id !== id));
         else setContainers((prev) => prev.filter((c) => c.id !== id));
       } else {
@@ -123,7 +133,9 @@ export default function DockerPage() {
             {t('docker.tabContainers')} ({containers.length})
           </button>
           <div className="ml-auto flex items-center pb-2">
-            <Button size="sm" onClick={fetchData}>{t('network.refresh')}</Button>
+            <Button size="sm" onClick={fetchData}>
+              {t('network.refresh')}
+            </Button>
           </div>
         </div>
 
@@ -181,38 +193,49 @@ export default function DockerPage() {
                     <tr className="border-b bg-bg-2 border-line">
                       <Th>{t('docker.colId')}</Th>
                       <Th>{t('docker.colTags')}</Th>
-                      <Th sortDir={sizeSort} onSort={toggleSizeSort}>{t('docker.colSize')}</Th>
+                      <Th sortDir={sizeSort} onSort={toggleSizeSort}>
+                        {t('docker.colSize')}
+                      </Th>
                       <Th>{t('docker.colCreated')}</Th>
                       <th className="px-4 py-3" />
                     </tr>
                   </thead>
                   <tbody>
                     {sortedImages.map((img, i) => (
-                      <tr key={img.id} className={`border-b border-line last:border-0 ${i % 2 === 1 ? 'bg-bg-2' : ''}`}>
+                      <tr
+                        key={img.id}
+                        className={`border-b border-line last:border-0 ${i % 2 === 1 ? 'bg-bg-2' : ''}`}
+                      >
                         <Td mono>{img.shortId}</Td>
                         <Td mono>
-                          {img.tags.length > 0
-                            ? img.tags.map((t) => (
-                                <span key={t} className="block">{t}</span>
-                              ))
-                            : <span className="text-ink-3">{t('docker.untagged')}</span>}
+                          {img.tags.length > 0 ? (
+                            img.tags.map((t) => (
+                              <span key={t} className="block">
+                                {t}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-ink-3">{t('docker.untagged')}</span>
+                          )}
                         </Td>
                         <Td>{formatBytes(img.size)}</Td>
                         <Td>{formatCreated(img.created)}</Td>
                         <td className="px-4 py-3 text-right">
-                          <Button
-                            size="sm"
-                            variant="danger"
-                            onClick={() =>
-                              setConfirm({
-                                type: 'image',
-                                id: img.id,
-                                label: img.tags[0] ?? img.shortId,
-                              })
-                            }
-                          >
-                            {t('common.delete')}
-                          </Button>
+                          {canManage && (
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              onClick={() =>
+                                setConfirm({
+                                  type: 'image',
+                                  id: img.id,
+                                  label: img.tags[0] ?? img.shortId,
+                                })
+                              }
+                            >
+                              {t('common.delete')}
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -242,7 +265,10 @@ export default function DockerPage() {
                   </thead>
                   <tbody>
                     {containers.map((c, i) => (
-                      <tr key={c.id} className={`border-b border-line last:border-0 ${i % 2 === 1 ? 'bg-bg-2' : ''}`}>
+                      <tr
+                        key={c.id}
+                        className={`border-b border-line last:border-0 ${i % 2 === 1 ? 'bg-bg-2' : ''}`}
+                      >
                         <Td mono>{c.shortId}</Td>
                         <Td mono>{c.names.join(', ')}</Td>
                         <Td mono>{c.image}</Td>
@@ -251,19 +277,21 @@ export default function DockerPage() {
                         </td>
                         <Td>{formatCreated(c.created)}</Td>
                         <td className="px-4 py-3 text-right">
-                          <Button
-                            size="sm"
-                            variant="danger"
-                            onClick={() =>
-                              setConfirm({
-                                type: 'container',
-                                id: c.id,
-                                label: c.names[0] ?? c.shortId,
-                              })
-                            }
-                          >
-                            {t('common.delete')}
-                          </Button>
+                          {canManage && (
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              onClick={() =>
+                                setConfirm({
+                                  type: 'container',
+                                  id: c.id,
+                                  label: c.names[0] ?? c.shortId,
+                                })
+                              }
+                            >
+                              {t('common.delete')}
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -277,9 +305,13 @@ export default function DockerPage() {
 
       {confirm && (
         <ConfirmModal
-          title={t(confirm.type === 'image' ? 'docker.confirmImageTitle' : 'docker.confirmContainerTitle')}
+          title={t(
+            confirm.type === 'image' ? 'docker.confirmImageTitle' : 'docker.confirmContainerTitle'
+          )}
           message={t(
-            confirm.type === 'image' ? 'docker.confirmImageMessage' : 'docker.confirmContainerMessage',
+            confirm.type === 'image'
+              ? 'docker.confirmImageMessage'
+              : 'docker.confirmContainerMessage',
             { label: confirm.label }
           )}
           confirmLabel={t('docker.confirmDeleteBtn')}
@@ -319,7 +351,9 @@ function Th({
 
 function Td({ children, mono }: { children: React.ReactNode; mono?: boolean }) {
   return (
-    <td className={`px-4 py-3 border-r border-line text-xs ${mono ? 'font-mono text-ink-2' : 'text-ink-3'}`}>
+    <td
+      className={`px-4 py-3 border-r border-line text-xs ${mono ? 'font-mono text-ink-2' : 'text-ink-3'}`}
+    >
       {children}
     </td>
   );

@@ -8,6 +8,7 @@ import cors from 'cors';
 import logger from './lib/logger.js';
 
 import authRoutes from './routes/auth.js';
+import adminRoutes from './routes/admins.js';
 import serverRoutes from './routes/servers.js';
 import pushRoutes from './routes/push.js';
 import backupRoutes from './routes/backups.js';
@@ -20,8 +21,7 @@ import scheduleRoutes from './routes/schedules.js';
 import dockerRoutes from './routes/docker.js';
 import { loadGames, getGames } from './lib/gameLoader.js';
 import { initScheduler } from './lib/scheduler.js';
-import { loadVisitors } from './lib/visitorStore.js';
-import { loadBlocklist } from './lib/blocklistStore.js';
+import { migrateLegacyData } from './lib/legacyMigration.js';
 import { loadSettings, getSettings, saveSettings } from './lib/settingsStore.js';
 import { isDockerAvailable } from './lib/docker.js';
 import docker from './lib/docker.js';
@@ -43,6 +43,7 @@ app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: '1mb' }));
 
 app.use('/api/auth', authRoutes);
+app.use('/api/admins', adminRoutes);
 app.use('/api/servers', serverRoutes);
 app.use('/api/games', gameRoutes);
 app.use('/api/files', fileRoutes);
@@ -99,10 +100,10 @@ await loadSettings();
   }
 }
 
+await migrateLegacyData();
+
 await loadGames();
 initScheduler(getGames());
-await loadVisitors();
-await loadBlocklist();
 
 const PORT = process.env.PORT ?? 4000;
 httpServer.listen(PORT, () => logger.info({ port: PORT }, 'ServerDock backend running'));

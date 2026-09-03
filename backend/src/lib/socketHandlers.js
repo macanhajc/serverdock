@@ -10,6 +10,7 @@ import { sendCrashNotification, sendEventNotification } from './notifier.js';
 import { getHostDiskInfo } from './diskUtils.js';
 import { getLogBuffer, pushLogBuffer } from './logBuffer.js';
 import { isRevoked } from './tokenRevocation.js';
+import { hasPermission } from './adminStore.js';
 import {
   getTransient,
   getLastKnown,
@@ -284,7 +285,9 @@ async function pollStatus(io) {
         pollTick % RCON_PLAYERS_EVERY_N_TICKS === 0
       ) {
         sendRconCommand(game, game.rcon.listCommand)
-          .then((v) => updatePlayerList(game.id, (v || '').trim().slice(0, RCON_PLAYER_LIST_MAX_LEN)))
+          .then((v) =>
+            updatePlayerList(game.id, (v || '').trim().slice(0, RCON_PLAYER_LIST_MAX_LEN))
+          )
           .catch(() => {});
       } else if (status !== 'running') {
         updatePlayerList(game.id, null);
@@ -409,6 +412,9 @@ export function setupSocketHandlers(io) {
     // only writes to stdin through a short-lived, stdin-only attach.
     socket.on('console:input', async ({ id, input } = {}) => {
       if (!socket.user) return socket.emit('error', { message: 'Authentication required' });
+      const canWrite =
+        socket.user.role === 'super_admin' || hasPermission(socket.user.sub, 'console:write');
+      if (!canWrite) return socket.emit('error', { message: 'Insufficient permissions' });
       if (!id || typeof input !== 'string') return;
       try {
         await sendStdinCommand(id, input.slice(0, 1024));

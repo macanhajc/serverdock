@@ -4,7 +4,15 @@ import { Router } from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
 import { verifyToken } from '../middleware/auth.js';
-import { getGames, getGame, loadGames, saveGame, GAMES_DIR, getDataPath } from '../lib/gameLoader.js';
+import { requirePermission } from '../middleware/permissions.js';
+import {
+  getGames,
+  getGame,
+  loadGames,
+  saveGame,
+  GAMES_DIR,
+  getDataPath,
+} from '../lib/gameLoader.js';
 import { getContainerStatus } from '../lib/containers.js';
 import { getIo } from '../lib/socket.js';
 import { emitServerEvent } from '../lib/statusBus.js';
@@ -93,7 +101,6 @@ function validatePortRange(ports) {
   }
   return null;
 }
-
 
 async function updateImageBuilt(id, value) {
   await saveGame(id, { imageBuilt: value });
@@ -187,8 +194,12 @@ router.get('/:id/export', verifyToken, async (req, res) => {
   const game = getGame(id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
 
-  const { avatar: _avatar, avatarVersion: _avatarVersion, imageBuilt: _imageBuilt, ...exportable } =
-    game;
+  const {
+    avatar: _avatar,
+    avatarVersion: _avatarVersion,
+    imageBuilt: _imageBuilt,
+    ...exportable
+  } = game;
 
   let dockerfile;
   if (game.imageSource === 'local') {
@@ -206,7 +217,7 @@ router.get('/:id/export', verifyToken, async (req, res) => {
 // POST /api/games/import — creates a new game from a bundle produced by the
 // export route above. Same validation as a normal create; rejects if the id
 // already exists rather than guessing at a merge.
-router.post('/import', verifyToken, async (req, res) => {
+router.post('/import', verifyToken, requirePermission('games:create'), async (req, res) => {
   const { game, dockerfile } = req.body ?? {};
   if (!game || typeof game !== 'object') {
     return res.status(400).json({ error: 'Missing "game" in import bundle' });
@@ -230,8 +241,12 @@ router.post('/import', verifyToken, async (req, res) => {
 
   // Strip the same machine-local fields export leaves out, in case an older
   // export or a hand-edited bundle still carries them.
-  const { avatar: _avatar, avatarVersion: _avatarVersion, imageBuilt: _imageBuilt, ...toWrite } =
-    game;
+  const {
+    avatar: _avatar,
+    avatarVersion: _avatarVersion,
+    imageBuilt: _imageBuilt,
+    ...toWrite
+  } = game;
 
   const gameDir = join(GAMES_DIR, toWrite.id);
   await mkdir(gameDir, { recursive: true });
@@ -248,7 +263,7 @@ router.post('/import', verifyToken, async (req, res) => {
 });
 
 // POST /api/games
-router.post('/', verifyToken, async (req, res) => {
+router.post('/', verifyToken, requirePermission('games:create'), async (req, res) => {
   const game = req.body ?? {};
 
   const missing = REQUIRED_FIELDS.filter((f) => game[f] === undefined);
@@ -277,7 +292,7 @@ router.post('/', verifyToken, async (req, res) => {
 });
 
 // PUT /api/games/:id
-router.put('/:id', verifyToken, async (req, res) => {
+router.put('/:id', verifyToken, requirePermission('games:edit'), async (req, res) => {
   const { id } = req.params;
   const existing = getGame(id);
   if (!existing) return res.status(404).json({ error: 'Game not found' });
@@ -299,7 +314,7 @@ router.put('/:id', verifyToken, async (req, res) => {
 });
 
 // DELETE /api/games/:id
-router.delete('/:id', verifyToken, async (req, res) => {
+router.delete('/:id', verifyToken, requirePermission('games:delete'), async (req, res) => {
   const { id } = req.params;
   if (!getGame(id)) return res.status(404).json({ error: 'Game not found' });
 
@@ -329,7 +344,7 @@ router.delete('/:id', verifyToken, async (req, res) => {
 });
 
 // POST /api/games/:id/dockerfile
-router.post('/:id/dockerfile', verifyToken, async (req, res) => {
+router.post('/:id/dockerfile', verifyToken, requirePermission('games:edit'), async (req, res) => {
   const { id } = req.params;
   if (!getGame(id)) return res.status(404).json({ error: 'Game not found' });
 
@@ -341,43 +356,49 @@ router.post('/:id/dockerfile', verifyToken, async (req, res) => {
 });
 
 // POST /api/games/:id/avatar
-router.post('/:id/avatar', verifyToken, handleAvatarUpload, async (req, res) => {
-  const { id } = req.params;
-  const game = getGame(id);
-  if (!game) return res.status(404).json({ error: 'Game not found' });
+router.post(
+  '/:id/avatar',
+  verifyToken,
+  requirePermission('games:edit'),
+  handleAvatarUpload,
+  async (req, res) => {
+    const { id } = req.params;
+    const game = getGame(id);
+    if (!game) return res.status(404).json({ error: 'Game not found' });
 
-  const file = req.file;
-  if (!file) return res.status(400).json({ error: 'Image file is required' });
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: 'Image file is required' });
 
-  let resized;
-  try {
-    resized = await sharp(file.buffer)
-      .rotate() // normalize orientation using EXIF before stripping it
-      .resize({
-        width: AVATAR_MAX_DIMENSION,
-        height: AVATAR_MAX_DIMENSION,
-        fit: 'inside',
-        withoutEnlargement: true,
-      })
-      .webp({ quality: 82 })
-      .toBuffer();
-  } catch {
-    return res.status(400).json({ error: 'Could not process image — is it a valid image file?' });
+    let resized;
+    try {
+      resized = await sharp(file.buffer)
+        .rotate() // normalize orientation using EXIF before stripping it
+        .resize({
+          width: AVATAR_MAX_DIMENSION,
+          height: AVATAR_MAX_DIMENSION,
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .webp({ quality: 82 })
+        .toBuffer();
+    } catch {
+      return res.status(400).json({ error: 'Could not process image — is it a valid image file?' });
+    }
+
+    const gameDir = join(GAMES_DIR, id);
+    await removeExistingAvatar(gameDir);
+    await writeFile(join(gameDir, AVATAR_FILENAME), resized);
+
+    // avatarVersion cache-busts the versioned public URL
+    await saveGame(id, { avatar: AVATAR_FILENAME, avatarVersion: Date.now() });
+    await loadGames();
+
+    res.json({ avatar: AVATAR_FILENAME });
   }
-
-  const gameDir = join(GAMES_DIR, id);
-  await removeExistingAvatar(gameDir);
-  await writeFile(join(gameDir, AVATAR_FILENAME), resized);
-
-  // avatarVersion cache-busts the versioned public URL
-  await saveGame(id, { avatar: AVATAR_FILENAME, avatarVersion: Date.now() });
-  await loadGames();
-
-  res.json({ avatar: AVATAR_FILENAME });
-});
+);
 
 // DELETE /api/games/:id/avatar
-router.delete('/:id/avatar', verifyToken, async (req, res) => {
+router.delete('/:id/avatar', verifyToken, requirePermission('games:edit'), async (req, res) => {
   const { id } = req.params;
   const game = getGame(id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
@@ -393,7 +414,7 @@ router.delete('/:id/avatar', verifyToken, async (req, res) => {
 });
 
 // POST /api/games/:id/build
-router.post('/:id/build', verifyToken, async (req, res) => {
+router.post('/:id/build', verifyToken, requirePermission('games:edit'), async (req, res) => {
   const { id } = req.params;
   const game = getGame(id);
   if (!game) return res.status(404).json({ error: 'Game not found' });

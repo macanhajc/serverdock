@@ -10,7 +10,14 @@ import { StatusBadge } from '../../../components/core/StatusBadge';
 import { Button } from '../../../components/core/Button';
 import { ConfirmModal } from '../../../components/core/ConfirmModal';
 import { Sparkline } from '../../../components/data/Sparkline';
-import { STABLE, IN_FLIGHT, toUiStatus, gameHue, gameMark, storeLabel } from '../../../utils/serverStatus';
+import {
+  STABLE,
+  IN_FLIGHT,
+  toUiStatus,
+  gameHue,
+  gameMark,
+  storeLabel,
+} from '../../../utils/serverStatus';
 import { fmtBytes } from '../../../utils/format';
 import type { Server, ServerStats, LogLine, PullProgress } from '../../../types';
 import { InfoTab } from './components/InfoTab';
@@ -45,7 +52,7 @@ function appendCapped(prev: LogLine[], items: LogLine[]): LogLine[] {
 export default function ServerDetail() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
-  const { token } = useAuth();
+  const { token, hasPermission } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
 
@@ -375,31 +382,39 @@ export default function ServerDetail() {
           {badgeLabel}
         </StatusBadge>
         <div className="ml-auto flex gap-1.5 flex-none">
-          <Button
-            size="sm"
-            variant="primary"
-            disabled={!isNotCreated || busy}
-            onClick={() => callAction('start')}
-          >
-            {t('serverDetail.actStart')}
-          </Button>
-          <Button
-            size="sm"
-            variant="danger"
-            disabled={!isRunning || busy}
-            onClick={() => callAction('stop')}
-          >
-            {t('serverDetail.actStop')}
-          </Button>
-          <Button size="sm" disabled={!isRunning || busy} onClick={() => callAction('restart')}>
-            {t('serverDetail.actRestart')}
-          </Button>
-          <Button size="sm" disabled={busy} onClick={() => setConfirmReset(true)}>
-            {t('serverDetail.actReset')}
-          </Button>
-          <Button size="sm" onClick={() => navigate(`/admin/servers/${id}/edit`)}>
-            {t('serverDetail.editConfig')}
-          </Button>
+          {hasPermission('servers:power') && (
+            <>
+              <Button
+                size="sm"
+                variant="primary"
+                disabled={!isNotCreated || busy}
+                onClick={() => callAction('start')}
+              >
+                {t('serverDetail.actStart')}
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={!isRunning || busy}
+                onClick={() => callAction('stop')}
+              >
+                {t('serverDetail.actStop')}
+              </Button>
+              <Button size="sm" disabled={!isRunning || busy} onClick={() => callAction('restart')}>
+                {t('serverDetail.actRestart')}
+              </Button>
+            </>
+          )}
+          {hasPermission('servers:reset') && (
+            <Button size="sm" disabled={busy} onClick={() => setConfirmReset(true)}>
+              {t('serverDetail.actReset')}
+            </Button>
+          )}
+          {hasPermission('games:edit') && (
+            <Button size="sm" onClick={() => navigate(`/admin/servers/${id}/edit`)}>
+              {t('serverDetail.editConfig')}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -443,11 +458,13 @@ export default function ServerDetail() {
                   </span>
                 </span>
                 <span className="font-mono text-xs text-ink-3">
-                  {t('serverDetail.resNet')} ↓ <span className="text-ink">{fmtBytes(stats.netInRate)}/s</span> ↑{' '}
+                  {t('serverDetail.resNet')} ↓{' '}
+                  <span className="text-ink">{fmtBytes(stats.netInRate)}/s</span> ↑{' '}
                   <span className="text-ink">{fmtBytes(stats.netOutRate)}/s</span>
                 </span>
                 <span className="font-mono text-xs text-ink-3">
-                  {t('serverDetail.resDisk')} <span className="text-ink">{fmtBytes(server.diskUsed ?? 0)}</span>
+                  {t('serverDetail.resDisk')}{' '}
+                  <span className="text-ink">{fmtBytes(server.diskUsed ?? 0)}</span>
                 </span>
               </>
             )}
@@ -499,7 +516,9 @@ export default function ServerDetail() {
               </div>
 
               <div className="flex items-center gap-3">
-                <span className="font-mono text-xs text-ink-3 w-10 shrink-0">{t('serverDetail.resNet')}</span>
+                <span className="font-mono text-xs text-ink-3 w-10 shrink-0">
+                  {t('serverDetail.resNet')}
+                </span>
                 <span className="font-mono text-xs text-ink-3">
                   ↓ <span className="text-ink">{fmtBytes(stats.netInRate)}/s</span>
                 </span>
@@ -509,7 +528,9 @@ export default function ServerDetail() {
               </div>
 
               <div className="flex flex-row gap-3">
-                <span className="font-mono text-xs text-ink-3 w-10 shrink-0">{t('serverDetail.resDisk')}</span>
+                <span className="font-mono text-xs text-ink-3 w-10 shrink-0">
+                  {t('serverDetail.resDisk')}
+                </span>
                 <span className="font-mono text-xs text-ink shrink-0">
                   {fmtBytes(server.diskUsed ?? 0)}
                 </span>
@@ -543,6 +564,7 @@ export default function ServerDetail() {
             id={id!}
             token={token}
             isRunning={isRunning}
+            canWrite={hasPermission('console:write')}
             rcon={rcon}
             visible={tab === 'console'}
             lines={lines}
@@ -551,7 +573,14 @@ export default function ServerDetail() {
         </div>
         {/* Files are only mutable on a stopped server — `isNotCreated` is the
             stopped/not_created/error set, matching the backend's editable states */}
-        {tab === 'files' && <FilesTab id={id!} token={token} editable={isNotCreated} />}
+        {tab === 'files' && (
+          <FilesTab
+            id={id!}
+            token={token}
+            editable={isNotCreated}
+            canWrite={hasPermission('files:write')}
+          />
+        )}
         {tab === 'schedule' && <ScheduleTab id={id!} token={token} />}
         {tab === 'backups' && <BackupTab id={id!} token={token} isRunning={isRunning} />}
       </div>

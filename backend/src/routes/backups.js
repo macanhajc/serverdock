@@ -2,6 +2,7 @@ import { createReadStream } from 'fs';
 import { stat } from 'fs/promises';
 import { Router } from 'express';
 import { verifyToken } from '../middleware/auth.js';
+import { requirePermission } from '../middleware/permissions.js';
 import { getGame, saveGame } from '../lib/gameLoader.js';
 import {
   listBackups,
@@ -24,7 +25,7 @@ router.get('/:id', verifyToken, async (req, res) => {
 });
 
 // PUT /api/backups/:id/retention — keep last N backups (0 = keep all)
-router.put('/:id/retention', verifyToken, async (req, res) => {
+router.put('/:id/retention', verifyToken, requirePermission('backups:manage'), async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
 
@@ -40,7 +41,7 @@ router.put('/:id/retention', verifyToken, async (req, res) => {
 });
 
 // POST /api/backups/:id
-router.post('/:id', verifyToken, async (req, res) => {
+router.post('/:id', verifyToken, requirePermission('backups:manage'), async (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
   try {
@@ -83,30 +84,40 @@ router.get('/:id/:backupId/download', verifyToken, async (req, res) => {
 // the admin has a completion signal that doesn't depend on the initiating
 // HTTP request still being connected — a large archive can take a while to
 // extract, and BackupTab's own "Restoring…" state is tied to that same request.
-router.post('/:id/:backupId/restore', verifyToken, async (req, res) => {
-  const game = getGame(req.params.id);
-  if (!game) return res.status(404).json({ error: 'Game not found' });
-  try {
-    const result = await restoreBackup(req.params.id, req.params.backupId);
-    emitServerEvent({ type: 'restore_complete', id: game.id, name: game.name });
-    res.json({ ok: true, ...result });
-  } catch (err) {
-    emitServerEvent({
-      type: 'restore_failed',
-      id: game.id,
-      name: game.name,
-      message: err.message,
-    });
-    res.status(err.status ?? 500).json({ error: err.message ?? 'Restore failed' });
+router.post(
+  '/:id/:backupId/restore',
+  verifyToken,
+  requirePermission('backups:manage'),
+  async (req, res) => {
+    const game = getGame(req.params.id);
+    if (!game) return res.status(404).json({ error: 'Game not found' });
+    try {
+      const result = await restoreBackup(req.params.id, req.params.backupId);
+      emitServerEvent({ type: 'restore_complete', id: game.id, name: game.name });
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      emitServerEvent({
+        type: 'restore_failed',
+        id: game.id,
+        name: game.name,
+        message: err.message,
+      });
+      res.status(err.status ?? 500).json({ error: err.message ?? 'Restore failed' });
+    }
   }
-});
+);
 
 // DELETE /api/backups/:id/:backupId
-router.delete('/:id/:backupId', verifyToken, async (req, res) => {
-  const game = getGame(req.params.id);
-  if (!game) return res.status(404).json({ error: 'Game not found' });
-  await deleteBackup(req.params.id, req.params.backupId);
-  res.json({ ok: true });
-});
+router.delete(
+  '/:id/:backupId',
+  verifyToken,
+  requirePermission('backups:manage'),
+  async (req, res) => {
+    const game = getGame(req.params.id);
+    if (!game) return res.status(404).json({ error: 'Game not found' });
+    await deleteBackup(req.params.id, req.params.backupId);
+    res.json({ ok: true });
+  }
+);
 
 export default router;

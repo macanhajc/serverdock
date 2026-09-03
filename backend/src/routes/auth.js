@@ -1,16 +1,11 @@
 import { Router } from 'express';
-import { readFile } from 'fs/promises';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { verifyToken } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import { revokeToken } from '../lib/tokenRevocation.js';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const AUTH_FILE = join(__dirname, '../../auth.json');
+import { getAdminAuthByUsername, touchLastLogin, getPermissions } from '../lib/adminStore.js';
 
 const router = Router();
 
@@ -23,22 +18,19 @@ router.post('/login', loginRateLimit, async (req, res) => {
     return res.status(400).json({ error: 'username and password required' });
   }
 
-  let stored;
-  try {
-    stored = JSON.parse(await readFile(AUTH_FILE, 'utf-8'));
-  } catch {
-    return res.status(500).json({ error: 'Auth not configured — run setup-auth.js' });
-  }
-
-  const valid =
-    username === stored.username && (await bcrypt.compare(password, stored.passwordHash));
+  const admin = getAdminAuthByUsername(username);
+  const valid = admin && (await bcrypt.compare(password, admin.password_hash));
   if (!valid) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
 
-  const token = jwt.sign({ username, jti: randomUUID() }, process.env.JWT_SECRET, {
-    expiresIn: '24h',
-  });
+  touchLastLogin(admin.id);
+
+  const token = jwt.sign(
+    { sub: admin.id, username: admin.username, role: admin.role, jti: randomUUID() },
+    process.env.JWT_SECRET,
+    { expiresIn: '24h' }
+  );
   res.json({ token, expiresIn: 86400 });
 });
 
@@ -46,6 +38,16 @@ router.post('/login', loginRateLimit, async (req, res) => {
 router.post('/logout', verifyToken, async (req, res) => {
   revokeToken(req.user.jti, req.user.exp);
   res.json({ message: 'Logged out' });
+});
+
+// GET /api/auth/me — who am I, for the frontend to gate UI. `permissions:
+// null` means "all" (super_admin); otherwise it's the live grant list.
+router.get('/me', verifyToken, (req, res) => {
+  res.json({
+    username: req.user.username,
+    role: req.user.role,
+    permissions: req.user.role === 'super_admin' ? null : getPermissions(req.user.sub),
+  });
 });
 
 export default router;

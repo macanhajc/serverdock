@@ -1,54 +1,40 @@
-import { readFile, writeFile, rename } from 'fs/promises';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
+import db from './db.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const STORE_PATH = join(__dirname, '../../../visitors.json');
-const TMP_PATH = STORE_PATH + '.tmp';
+const upsertIp = db.prepare(`
+  INSERT INTO visitor_ips (visitor_id, ip, last_seen) VALUES (?, ?, ?)
+  ON CONFLICT (visitor_id, ip) DO UPDATE SET last_seen = excluded.last_seen
+`);
 
-let visitors = [];
-
-export async function loadVisitors() {
-  try {
-    const raw = await readFile(STORE_PATH, 'utf8');
-    visitors = JSON.parse(raw);
-  } catch {
-    visitors = [];
-  }
-}
-
-// Serialize writes. Concurrent identify requests would otherwise race on the
-// shared .tmp file: one rename moves it to visitors.json before the other's
-// rename runs, so the second fails with ENOENT. Chaining guarantees exactly one
-// writeFile→rename at a time. `run` is used for both fulfil and reject so a
-// failed write never stalls the queue; each caller still sees its own outcome.
-let writeChain = Promise.resolve();
-
-function persist() {
-  const run = async () => {
-    await writeFile(TMP_PATH, JSON.stringify(visitors, null, 2));
-    await rename(TMP_PATH, STORE_PATH);
+function rowToVisitor(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    username: row.username,
+    token: row.token,
+    ip: row.ip,
+    userAgent: row.user_agent,
+    firstSeen: row.first_seen,
+    lastSeen: row.last_seen,
   };
-  writeChain = writeChain.then(run, run);
-  return writeChain;
 }
 
 export function getVisitors() {
-  return [...visitors].sort((a, b) => new Date(b.lastSeen) - new Date(a.lastSeen));
+  return db.prepare('SELECT * FROM visitors ORDER BY last_seen DESC').all().map(rowToVisitor);
 }
 
 export function getByToken(token) {
-  return visitors.find((v) => v.token === token) ?? null;
+  return rowToVisitor(db.prepare('SELECT * FROM visitors WHERE token = ?').get(token));
 }
 
 export function getByUsername(username) {
-  const lower = username.toLowerCase();
-  return visitors.find((v) => v.username.toLowerCase() === lower) ?? null;
+  return rowToVisitor(
+    db.prepare('SELECT * FROM visitors WHERE username = ? COLLATE NOCASE').get(username)
+  );
 }
 
 export function getById(id) {
-  return visitors.find((v) => v.id === id) ?? null;
+  return rowToVisitor(db.prepare('SELECT * FROM visitors WHERE id = ?').get(id));
 }
 
 export async function createVisitor({ username, ip, userAgent }) {
@@ -57,27 +43,42 @@ export async function createVisitor({ username, ip, userAgent }) {
     id: randomUUID(),
     username,
     token: randomUUID(),
-    ip,
+    ip: ip || null,
     userAgent: userAgent ?? '',
     firstSeen: now,
     lastSeen: now,
   };
-  visitors.push(visitor);
-  await persist();
+  db.prepare(
+    `INSERT INTO visitors (id, username, token, ip, user_agent, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    visitor.id,
+    visitor.username,
+    visitor.token,
+    visitor.ip,
+    visitor.userAgent,
+    visitor.firstSeen,
+    visitor.lastSeen
+  );
+  if (visitor.ip) upsertIp.run(visitor.id, visitor.ip, visitor.lastSeen);
   return visitor;
 }
 
+// Only `ip`/`lastSeen` are ever patched by callers today (a returning visitor
+// re-identifying) — every IP a visitor connects from is also tracked in
+// visitor_ips, even though the row itself only surfaces the most recent one.
 export async function updateVisitor(id, patch) {
-  const idx = visitors.findIndex((v) => v.id === id);
-  if (idx === -1) return null;
-  visitors[idx] = { ...visitors[idx], ...patch };
-  await persist();
-  return visitors[idx];
+  const existing = db.prepare('SELECT * FROM visitors WHERE id = ?').get(id);
+  if (!existing) return null;
+
+  const ip = patch.ip !== undefined ? patch.ip : existing.ip;
+  const lastSeen = patch.lastSeen !== undefined ? patch.lastSeen : existing.last_seen;
+
+  db.prepare('UPDATE visitors SET ip = ?, last_seen = ? WHERE id = ?').run(ip, lastSeen, id);
+  if (ip) upsertIp.run(id, ip, lastSeen);
+
+  return rowToVisitor(db.prepare('SELECT * FROM visitors WHERE id = ?').get(id));
 }
 
 export async function removeVisitor(id) {
-  const before = visitors.length;
-  visitors = visitors.filter((v) => v.id !== id);
-  if (visitors.length < before) await persist();
-  return visitors.length < before;
+  return db.prepare('DELETE FROM visitors WHERE id = ?').run(id).changes > 0;
 }

@@ -204,11 +204,16 @@ interface FilesTabProps {
   // Files are mutable only while the server is stopped; the backend enforces
   // this too (409). When false the UI is read-only: browse/view/download only.
   editable: boolean;
+  // files:write permission — a second, independent gate on the same actions.
+  canWrite: boolean;
 }
 
-export function FilesTab({ id, token, editable }: FilesTabProps) {
+export function FilesTab({ id, token, editable, canWrite }: FilesTabProps) {
   const { t } = useTranslation();
   const { addToast } = useToast();
+  // Both the container must be stopped AND the caller must hold files:write —
+  // kept separate from `editable` so the read-only banner can name the actual reason.
+  const writable = editable && canWrite;
 
   const [currentPath, setCurrentPath] = useState('/');
   const [entries, setEntries] = useState<FileEntry[]>([]);
@@ -275,7 +280,7 @@ export function FilesTab({ id, token, editable }: FilesTabProps) {
   }
 
   async function saveFile() {
-    if (!openFile || fileSaving || !editable) return;
+    if (!openFile || fileSaving || !writable) return;
     setFileSaving(true);
     setFileError('');
     try {
@@ -309,7 +314,7 @@ export function FilesTab({ id, token, editable }: FilesTabProps) {
   ]);
 
   async function uploadFiles(fileList: File[]) {
-    if (!fileList.length || !editable) return;
+    if (!fileList.length || !writable) return;
     setUploading(true);
     const form = new FormData();
     for (const f of fileList) form.append('files', f);
@@ -452,7 +457,7 @@ export function FilesTab({ id, token, editable }: FilesTabProps) {
     const kind = creating;
     setCreating(null);
     setCreateName('');
-    if (!name || !kind || !editable) return;
+    if (!name || !kind || !writable) return;
     if (name.includes('/') || name.includes('\\')) {
       addToast(t('serverDetail.filesCreateFailed'));
       return;
@@ -498,10 +503,10 @@ export function FilesTab({ id, token, editable }: FilesTabProps) {
     <div className="h-full grid grid-cols-[320px_1fr] overflow-hidden">
       <div
         className="flex flex-col border-r border-line bg-bg-1 overflow-hidden relative"
-        onDragEnter={editable ? onDragEnter : undefined}
-        onDragLeave={editable ? onDragLeave : undefined}
-        onDragOver={editable ? onDragOver : undefined}
-        onDrop={editable ? onDrop : undefined}
+        onDragEnter={writable ? onDragEnter : undefined}
+        onDragLeave={writable ? onDragLeave : undefined}
+        onDragOver={writable ? onDragOver : undefined}
+        onDrop={writable ? onDrop : undefined}
       >
         {dragCount > 0 && (
           <div
@@ -542,7 +547,7 @@ export function FilesTab({ id, token, editable }: FilesTabProps) {
               )}
             </Fragment>
           ))}
-          {editable && (
+          {writable && (
             <span className="ml-auto flex gap-2 flex-none">
               <button
                 className="text-ink-3 hover:text-ink cursor-pointer"
@@ -574,6 +579,14 @@ export function FilesTab({ id, token, editable }: FilesTabProps) {
             style={{ background: 'color-mix(in oklab, var(--yellow) 8%, transparent)' }}
           >
             {t('serverDetail.filesReadOnly')}
+          </div>
+        )}
+        {editable && !canWrite && (
+          <div
+            className="flex items-center gap-2 px-4 py-2 border-b border-line font-mono text-[11px] text-yellow flex-none"
+            style={{ background: 'color-mix(in oklab, var(--yellow) 8%, transparent)' }}
+          >
+            {t('serverDetail.filesNoPermission')}
           </div>
         )}
 
@@ -615,8 +628,8 @@ export function FilesTab({ id, token, editable }: FilesTabProps) {
                 modified={entry.modified}
                 active={openFile?.path === ep}
                 onClick={() => handleEntryClick(entry)}
-                onRename={editable ? (newName) => renameEntry(entry, newName) : undefined}
-                onRemove={editable ? () => setConfirmRemove(entry) : undefined}
+                onRename={writable ? (newName) => renameEntry(entry, newName) : undefined}
+                onRemove={writable ? () => setConfirmRemove(entry) : undefined}
                 onDownload={entry.type === 'file' ? () => downloadEntry(entry) : undefined}
               />
             );
@@ -665,7 +678,7 @@ export function FilesTab({ id, token, editable }: FilesTabProps) {
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={!editable || !fileDirty || fileSaving}
+                disabled={!writable || !fileDirty || fileSaving}
                 onClick={() => {
                   setFileContent(savedContent);
                   setFileError('');
@@ -676,7 +689,7 @@ export function FilesTab({ id, token, editable }: FilesTabProps) {
               <Button
                 size="sm"
                 variant={fileDirty ? 'primary' : 'default'}
-                disabled={!editable || !fileDirty || fileSaving}
+                disabled={!writable || !fileDirty || fileSaving}
                 onClick={saveFile}
               >
                 {fileSaving ? t('serverDetail.saving') : t('serverDetail.save')}
@@ -700,8 +713,8 @@ export function FilesTab({ id, token, editable }: FilesTabProps) {
               height="100%"
               style={{ height: '100%', fontSize: '12.5px' }}
               theme={filesEditorTheme}
-              readOnly={!editable}
-              basicSetup={{ highlightActiveLine: editable }}
+              readOnly={!writable}
+              basicSetup={{ highlightActiveLine: writable }}
               extensions={[...languageExtension(openFile.name), saveKeymap]}
             />
           </div>

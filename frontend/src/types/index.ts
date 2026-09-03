@@ -89,6 +89,31 @@ export interface HostDisk {
   total: number;
 }
 
+export type AdminRole = 'super_admin' | 'admin';
+
+export type Permission =
+  | 'servers:power'
+  | 'servers:reset'
+  | 'games:create'
+  | 'games:edit'
+  | 'games:delete'
+  | 'files:write'
+  | 'backups:manage'
+  | 'console:write'
+  | 'visitors:manage'
+  | 'schedules:manage'
+  | 'settings:manage';
+
+export interface Admin {
+  id: string;
+  username: string;
+  role: AdminRole;
+  createdAt: string;
+  lastLoginAt: string | null;
+  // null means "all" — only super_admin rows carry a null permissions list
+  permissions: Permission[] | null;
+}
+
 export interface Visitor {
   id: string;
   username: string;

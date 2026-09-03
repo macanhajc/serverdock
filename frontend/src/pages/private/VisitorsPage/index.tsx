@@ -18,7 +18,8 @@ interface PendingConfirm {
 
 export default function VisitorsPage() {
   const { t } = useTranslation();
-  const { token } = useAuth();
+  const { token, hasPermission } = useAuth();
+  const canManage = hasPermission('visitors:manage');
   const { addToast } = useToast();
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -99,7 +100,9 @@ export default function VisitorsPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        setVisitors((prev) => prev.map((v) => (v.ip && v.ip === ip ? { ...v, blocked: false } : v)));
+        setVisitors((prev) =>
+          prev.map((v) => (v.ip && v.ip === ip ? { ...v, blocked: false } : v))
+        );
         setBlockedIps((prev) => prev.filter((b) => b.ip !== ip));
         addToast(t('visitors.unblocked', { username }));
       } else {
@@ -221,7 +224,9 @@ export default function VisitorsPage() {
                         )}
                       </span>
                     </td>
-                    <td className="px-4 py-3 font-mono border-r border-line text-xs text-ink-2">{v.ip || '—'}</td>
+                    <td className="px-4 py-3 font-mono border-r border-line text-xs text-ink-2">
+                      {v.ip || '—'}
+                    </td>
                     <td className="px-4 py-3 font-mono border-r border-line text-xs text-ink-3 whitespace-nowrap">
                       {formatDate(v.firstSeen)}
                     </td>
@@ -229,34 +234,43 @@ export default function VisitorsPage() {
                       {formatDate(v.lastSeen)}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {v.blocked ? (
-                          <Button
-                            size="sm"
-                            variant="warn"
-                            onClick={() => unblockVisitor(v.id, v.username, v.ip)}
-                          >
-                            {t('visitors.unblock')}
-                          </Button>
-                        ) : (
+                      {canManage && (
+                        <div className="flex items-center justify-end gap-2">
+                          {v.blocked ? (
+                            <Button
+                              size="sm"
+                              variant="warn"
+                              onClick={() => unblockVisitor(v.id, v.username, v.ip)}
+                            >
+                              {t('visitors.unblock')}
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              onClick={() =>
+                                setConfirm({
+                                  type: 'block',
+                                  id: v.id,
+                                  username: v.username,
+                                  ip: v.ip,
+                                })
+                              }
+                            >
+                              {t('visitors.block')}
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="danger"
                             onClick={() =>
-                              setConfirm({ type: 'block', id: v.id, username: v.username, ip: v.ip })
+                              setConfirm({ type: 'remove', id: v.id, username: v.username })
                             }
                           >
-                            {t('visitors.block')}
+                            {t('visitors.remove')}
                           </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          onClick={() => setConfirm({ type: 'remove', id: v.id, username: v.username })}
-                        >
-                          {t('visitors.remove')}
-                        </Button>
-                      </div>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -296,9 +310,11 @@ export default function VisitorsPage() {
                         {formatDate(b.blockedAt)}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Button size="sm" variant="warn" onClick={() => unblockIp(b.ip)}>
-                          {t('visitors.unblock')}
-                        </Button>
+                        {canManage && (
+                          <Button size="sm" variant="warn" onClick={() => unblockIp(b.ip)}>
+                            {t('visitors.unblock')}
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -311,9 +327,13 @@ export default function VisitorsPage() {
 
       {confirm && (
         <ConfirmModal
-          title={t(confirm.type === 'remove' ? 'visitors.confirmRemoveTitle' : 'visitors.confirmBlockTitle')}
+          title={t(
+            confirm.type === 'remove' ? 'visitors.confirmRemoveTitle' : 'visitors.confirmBlockTitle'
+          )}
           message={t(
-            confirm.type === 'remove' ? 'visitors.confirmRemoveMessage' : 'visitors.confirmBlockMessage',
+            confirm.type === 'remove'
+              ? 'visitors.confirmRemoveMessage'
+              : 'visitors.confirmBlockMessage',
             { username: confirm.username }
           )}
           confirmLabel={t(

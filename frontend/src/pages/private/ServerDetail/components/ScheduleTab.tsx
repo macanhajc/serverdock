@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../../../../context/AuthContext';
 import { useToast } from '../../../../context/ToastContext';
 import { Button } from '../../../../components/core/Button';
 import { Toggle } from '../../../../components/core/Toggle';
@@ -91,15 +92,21 @@ interface ScheduleFormProps {
   form: ScheduleFormState;
   setForm: React.Dispatch<React.SetStateAction<ScheduleFormState>>;
   onCronPick: (expr: string) => void;
+  // A 'command' schedule runs arbitrary console input — the backend also
+  // requires console:write for it, so it's hidden here rather than letting
+  // someone pick it and hit a confusing 403 on save.
+  canUseCommand: boolean;
 }
 
-function ScheduleForm({ form, setForm, onCronPick }: ScheduleFormProps) {
+function ScheduleForm({ form, setForm, onCronPick, canUseCommand }: ScheduleFormProps) {
   const { t, i18n } = useTranslation();
 
   return (
     <>
       <div className="flex flex-col gap-1.5">
-        <label className="font-mono text-xs text-ink-3">{t('serverDetail.scheduleLabelField')}</label>
+        <label className="font-mono text-xs text-ink-3">
+          {t('serverDetail.scheduleLabelField')}
+        </label>
         <input
           type="text"
           value={form.label}
@@ -111,13 +118,15 @@ function ScheduleForm({ form, setForm, onCronPick }: ScheduleFormProps) {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="font-mono text-xs text-ink-3">{t('serverDetail.scheduleActionField')}</label>
+        <label className="font-mono text-xs text-ink-3">
+          {t('serverDetail.scheduleActionField')}
+        </label>
         <SegmentedControl
           options={[
             { label: 'Start', value: 'start' },
             { label: 'Stop', value: 'stop' },
             { label: 'Restart', value: 'restart' },
-            { label: 'Command', value: 'command' },
+            ...(canUseCommand ? [{ label: 'Command', value: 'command' }] : []),
             { label: 'Backup', value: 'backup' },
           ]}
           value={form.action}
@@ -145,7 +154,9 @@ function ScheduleForm({ form, setForm, onCronPick }: ScheduleFormProps) {
       )}
 
       <div className="flex flex-col gap-1.5">
-        <label className="font-mono text-xs text-ink-3">{t('serverDetail.scheduleCronField')}</label>
+        <label className="font-mono text-xs text-ink-3">
+          {t('serverDetail.scheduleCronField')}
+        </label>
         <input
           type="text"
           value={form.cron}
@@ -231,6 +242,9 @@ interface ScheduleTabProps {
 export function ScheduleTab({ id, token }: ScheduleTabProps) {
   const { t, i18n } = useTranslation();
   const { addToast } = useToast();
+  const { hasPermission } = useAuth();
+  const canManage = hasPermission('schedules:manage');
+  const canUseCommand = hasPermission('console:write');
 
   const [schedules, setSchedules] = useState<ScheduleEntry[]>([]);
   const [schedulesLoading, setSchedulesLoading] = useState(false);
@@ -402,7 +416,7 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
           {t('serverDetail.scheduleCount', { count: schedules.length })}
         </span>
         <div className="ml-auto">
-          {!showAddForm && (
+          {!showAddForm && canManage && (
             <Button
               size="sm"
               variant="primary"
@@ -421,7 +435,9 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
         <div className="px-6 py-8 font-mono text-xs text-ink-3">{t('common.loading')}</div>
       ) : schedules.length === 0 && !showAddForm ? (
         <div className="px-6 py-12 flex flex-col items-center gap-4">
-          <p className="font-mono text-sm text-ink-3 text-center">{t('serverDetail.scheduleEmpty')}</p>
+          <p className="font-mono text-sm text-ink-3 text-center">
+            {t('serverDetail.scheduleEmpty')}
+          </p>
         </div>
       ) : (
         <div className="divide-y divide-line">
@@ -435,10 +451,16 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
                     form={editForm}
                     setForm={setEditForm}
                     onCronPick={(expr) => setEditForm((f) => ({ ...f, cron: expr }))}
+                    canUseCommand={canUseCommand}
                   />
                   {editError && <div className="font-mono text-xs text-red">{editError}</div>}
                   <div className="flex gap-2">
-                    <Button size="sm" variant="primary" disabled={editSaving} onClick={saveEditSchedule}>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      disabled={editSaving}
+                      onClick={saveEditSchedule}
+                    >
                       {editSaving ? t('serverDetail.saving') : t('common.save')}
                     </Button>
                     <Button
@@ -458,7 +480,11 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
 
             return (
               <div key={s.id} className="flex items-center gap-4 px-6 py-3.5 hover:bg-bg-2">
-                <Toggle checked={s.enabled} onChange={() => toggleScheduleEnabled(s)} />
+                <Toggle
+                  checked={s.enabled}
+                  disabled={!canManage}
+                  onChange={() => toggleScheduleEnabled(s)}
+                />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2.5 flex-wrap">
                     <span className="text-sm text-ink">{s.label}</span>
@@ -506,32 +532,34 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <Button
-                    variant="primary"
-                    onClick={() => runNow(s.id)}
-                    disabled={runningId === s.id}
-                  >
-                    {runningId === s.id ? '…' : t('serverDetail.scheduleRunNow')}
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setEditId(s.id);
-                      setEditForm({
-                        label: s.label,
-                        action: s.action,
-                        cron: s.cron,
-                        command: s.command ?? '',
-                        timezone: s.timezone ?? '',
-                      });
-                      setEditError('');
-                      setShowAddForm(false);
-                    }}
-                  >
-                    {t('common.edit')}
-                  </Button>
-                  <Button onClick={() => setConfirmDelete(s)}>{t('common.delete')}</Button>
-                </div>
+                {canManage && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      variant="primary"
+                      onClick={() => runNow(s.id)}
+                      disabled={runningId === s.id}
+                    >
+                      {runningId === s.id ? '…' : t('serverDetail.scheduleRunNow')}
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setEditId(s.id);
+                        setEditForm({
+                          label: s.label,
+                          action: s.action,
+                          cron: s.cron,
+                          command: s.command ?? '',
+                          timezone: s.timezone ?? '',
+                        });
+                        setEditError('');
+                        setShowAddForm(false);
+                      }}
+                    >
+                      {t('common.edit')}
+                    </Button>
+                    <Button onClick={() => setConfirmDelete(s)}>{t('common.delete')}</Button>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -544,6 +572,7 @@ export function ScheduleTab({ id, token }: ScheduleTabProps) {
             form={addForm}
             setForm={setAddForm}
             onCronPick={(expr) => setAddForm((f) => ({ ...f, cron: expr }))}
+            canUseCommand={canUseCommand}
           />
           {addError && <div className="font-mono text-xs text-red">{addError}</div>}
           <div className="flex gap-2">

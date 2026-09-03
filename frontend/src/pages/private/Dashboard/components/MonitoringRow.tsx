@@ -1,11 +1,12 @@
-import { memo } from "react";
-import { Play, RotateCw, Square, Trash2 } from "lucide-react";
-import { useTranslation } from "react-i18next";
-import { Button, CopyButton, StatusBadge, Sparkline } from "../../../../components";
-import { UptimeTicker } from "../../../../components/core/UptimeTicker";
-import { fmtBytes, timeAgo, formatDate } from "../../../../utils/format";
-import { toUiStatus, IN_FLIGHT, gameHue, gameMark } from "../../../../utils/serverStatus";
-import { Server, ServerStats, PullProgress } from "../../../../types";
+import { memo } from 'react';
+import { Play, RotateCw, Square, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { useAuth } from '../../../../context/AuthContext';
+import { Button, CopyButton, StatusBadge, Sparkline } from '../../../../components';
+import { UptimeTicker } from '../../../../components/core/UptimeTicker';
+import { fmtBytes, timeAgo, formatDate } from '../../../../utils/format';
+import { toUiStatus, IN_FLIGHT, gameHue, gameMark } from '../../../../utils/serverStatus';
+import { Server, ServerStats, PullProgress } from '../../../../types';
 
 type Action = 'start' | 'stop' | 'restart' | 'reset';
 
@@ -34,6 +35,7 @@ export const MonitoringRow = memo(function MonitoringRow({
   actionLoading,
 }: MonitoringRowProps) {
   const { t } = useTranslation();
+  const { hasPermission } = useAuth();
   const { id, name, status } = server;
   const isRunning = status === 'running';
   const isNotCreated = status === 'stopped' || status === 'not_created' || status === 'error';
@@ -186,49 +188,55 @@ export const MonitoringRow = memo(function MonitoringRow({
 
       <td className="px-3 py-3.5">
         <div className="flex items-center gap-1">
-          <Button
-            size="sm"
-            variant="primary"
-            className="p-1.5"
-            disabled={!isNotCreated || busy}
-            title={t('adminDashboard.actStart')}
-            aria-label={t('adminDashboard.actStart')}
-            onClick={(e) => act(e, () => onAction(id, 'start'))}
-          >
-            <Play size={12} />
-          </Button>
-          <Button
-            size="sm"
-            variant="danger"
-            className="p-1.5"
-            disabled={!isRunning || busy}
-            title={t('adminDashboard.actStop')}
-            aria-label={t('adminDashboard.actStop')}
-            onClick={(e) => act(e, () => onAction(id, 'stop'))}
-          >
-            <Square size={12} />
-          </Button>
-          <Button
-            size="sm"
-            className="p-1.5"
-            disabled={!isRunning || busy}
-            title={t('adminDashboard.actRestart')}
-            aria-label={t('adminDashboard.actRestart')}
-            onClick={(e) => act(e, () => onAction(id, 'restart'))}
-          >
-            <RotateCw size={12} />
-          </Button>
-          <Button
-            size="sm"
-            variant="danger"
-            className="p-1.5"
-            disabled={busy}
-            title={t('adminDashboard.actReset')}
-            aria-label={t('adminDashboard.actReset')}
-            onClick={(e) => act(e, () => onWipeRequest(id, name))}
-          >
-            <Trash2 size={12} />
-          </Button>
+          {hasPermission('servers:power') && (
+            <>
+              <Button
+                size="sm"
+                variant="primary"
+                className="p-1.5"
+                disabled={!isNotCreated || busy}
+                title={t('adminDashboard.actStart')}
+                aria-label={t('adminDashboard.actStart')}
+                onClick={(e) => act(e, () => onAction(id, 'start'))}
+              >
+                <Play size={12} />
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                className="p-1.5"
+                disabled={!isRunning || busy}
+                title={t('adminDashboard.actStop')}
+                aria-label={t('adminDashboard.actStop')}
+                onClick={(e) => act(e, () => onAction(id, 'stop'))}
+              >
+                <Square size={12} />
+              </Button>
+              <Button
+                size="sm"
+                className="p-1.5"
+                disabled={!isRunning || busy}
+                title={t('adminDashboard.actRestart')}
+                aria-label={t('adminDashboard.actRestart')}
+                onClick={(e) => act(e, () => onAction(id, 'restart'))}
+              >
+                <RotateCw size={12} />
+              </Button>
+            </>
+          )}
+          {hasPermission('servers:reset') && (
+            <Button
+              size="sm"
+              variant="danger"
+              className="p-1.5"
+              disabled={busy}
+              title={t('adminDashboard.actReset')}
+              aria-label={t('adminDashboard.actReset')}
+              onClick={(e) => act(e, () => onWipeRequest(id, name))}
+            >
+              <Trash2 size={12} />
+            </Button>
+          )}
         </div>
       </td>
     </tr>
