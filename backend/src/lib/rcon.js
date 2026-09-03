@@ -6,7 +6,9 @@ const PACKET_AUTH_RESPONSE = 2;
 const PACKET_COMMAND = 2;
 const PACKET_COMMAND_RESPONSE = 0;
 
-function encodePacket(id, type, payload) {
+// Exported for direct unit testing — pure buffer framing, no need for a real
+// socket/Docker container to exercise the Source-RCON wire format.
+export function encodePacket(id, type, payload) {
   const body = Buffer.from(payload, 'utf8');
   const size = 4 + 4 + body.length + 2;
   const buf = Buffer.alloc(4 + size);
@@ -19,7 +21,7 @@ function encodePacket(id, type, payload) {
 }
 
 // Pulls one length-prefixed packet off the front of buf, if a full one has arrived.
-function readPacket(buf) {
+export function readPacket(buf) {
   if (buf.length < 4) return null;
   const size = buf.readInt32LE(0);
   const total = 4 + size;

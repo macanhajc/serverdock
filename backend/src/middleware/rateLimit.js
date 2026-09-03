@@ -1,4 +1,4 @@
-// Small in-memory sliding-window limiter, keyed by IP. No external deps —
+// Small in-memory fixed-window limiter, keyed by IP. No external deps —
 // consistent with the project's no-database, filesystem-state approach.
 const buckets = new Map();
 

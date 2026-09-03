@@ -4,7 +4,9 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-export const DB_PATH = join(__dirname, '../../serverdock.db');
+// Tests set DB_PATH=':memory:' (or a temp file) before importing this module
+// so they never touch the real serverdock.db.
+export const DB_PATH = process.env.DB_PATH ?? join(__dirname, '../../serverdock.db');
 
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
@@ -51,10 +53,13 @@ db.exec(`
 
 // Best-effort — irrelevant on Windows dev boxes, matters on the Ubuntu host this
 // project actually ships to (matches the "owner-readable only" treatment auth.json got).
-try {
-  chmodSync(DB_PATH, 0o600);
-} catch {
-  // ignore
+// Skipped for in-memory test databases, which have no path to chmod.
+if (DB_PATH !== ':memory:') {
+  try {
+    chmodSync(DB_PATH, 0o600);
+  } catch {
+    // ignore
+  }
 }
 
 export default db;

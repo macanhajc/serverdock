@@ -18,19 +18,22 @@ const MAX_FILE_SIZE = 512 * 1024; // 512 KB
 
 // --- Path sandbox helpers ---
 
-function withinSandbox(root, p) {
+// Exported for direct unit testing — this is the security-critical part of
+// the file manager and is cheaper to test in isolation than through the full
+// route stack (auth + permissions + Docker status + multer).
+export function withinSandbox(root, p) {
   return p === root || p.startsWith(root + sep);
 }
 
 // Resolve clientPath against sandboxRoot using pure path math (no FS access).
 // Returns the resolved absolute path, or null if it escapes the sandbox.
-function sandboxResolve(root, clientPath) {
+export function sandboxResolve(root, clientPath) {
   const p = resolvePath(root, (clientPath ?? '').replace(/^\/+/, ''));
   return withinSandbox(root, p) ? p : null;
 }
 
 // Resolve + follow symlinks. Returns { real } or { err: 403|404 }.
-async function sandboxRealpath(root, clientPath) {
+export async function sandboxRealpath(root, clientPath) {
   const preliminary = sandboxResolve(root, clientPath);
   if (!preliminary) return { err: 403 };
   let real;

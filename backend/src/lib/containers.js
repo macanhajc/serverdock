@@ -25,7 +25,8 @@ const CONTAINER_DNS = (process.env.CONTAINER_DNS ?? '1.1.1.1,8.8.8.8')
   .map((s) => s.trim())
   .filter(Boolean);
 
-function dockerStateToStatus(found) {
+// Exported for direct unit testing — pure mapping, no need to spin up Docker.
+export function dockerStateToStatus(found) {
   const { State, Status } = found;
   if (State === 'running') return 'running';
   if (State === 'restarting') return 'restarting';

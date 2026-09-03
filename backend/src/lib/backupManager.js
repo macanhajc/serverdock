@@ -68,7 +68,13 @@ export async function createBackup(gameId, label) {
   const backupPath = join(backupsDir, `${id}.tar.gz`);
   const sidecarPath = join(backupsDir, `${id}.json`);
 
-  await execFileAsync('tar', ['-czf', backupPath, '-C', dataDir, '.']);
+  // Archive name is passed relative to cwd, not as backupPath directly: GNU
+  // tar parses an absolute -f value for a "[host]:path" remote-archive spec,
+  // and misreads a Windows drive letter ("C:\...") as a hostname, so it tries
+  // to open a network connection instead of a local file. A relative name
+  // never matches that pattern. (--force-local also fixes GNU tar, but is an
+  // unrecognized option that hard-fails on Windows' own bsdtar.)
+  await execFileAsync('tar', ['-czf', `${id}.tar.gz`, '-C', dataDir, '.'], { cwd: backupsDir });
 
   const { size } = await stat(backupPath);
 
@@ -120,7 +126,10 @@ export async function restoreBackup(gameId, backupId) {
   const tmpDir = join(gameDir, `.restore-${backupId}-${Date.now()}`);
   await mkdir(tmpDir, { recursive: true });
   try {
-    await execFileAsync('tar', ['-xzf', backupPath, '-C', tmpDir]);
+    // Relative archive name + cwd — see the matching comment in createBackup.
+    await execFileAsync('tar', ['-xzf', `${backupId}.tar.gz`, '-C', tmpDir], {
+      cwd: getBackupsDir(gameId),
+    });
   } catch (err) {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     logger.warn({ err, gameId, backupId }, 'backup extract failed');

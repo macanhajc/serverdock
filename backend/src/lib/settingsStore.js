@@ -3,7 +3,9 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SETTINGS_PATH = join(__dirname, '../../settings.json');
+// Tests set SETTINGS_PATH to a temp file before importing this module so they
+// never touch the real settings.json (same override pattern as db.js's DB_PATH).
+const SETTINGS_PATH = process.env.SETTINGS_PATH ?? join(__dirname, '../../settings.json');
 const TMP_PATH = `${SETTINGS_PATH}.tmp`;
 
 const DEFAULTS = {

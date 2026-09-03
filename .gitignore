@@ -15,4 +15,5 @@ backend/serverdock.db-wal
 backend/serverdock.db-shm
 backend/games/*/data/
 backend/games/*/backups/
+backend/coverage/
 *.log

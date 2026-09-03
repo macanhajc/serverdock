@@ -6,7 +6,8 @@ const A2S_INFO_REQUEST = Buffer.concat([
   Buffer.from('Source Engine Query\0'),
 ]);
 
-function parseA2SInfo(buf) {
+// Exported for direct unit testing — pure buffer parsing.
+export function parseA2SInfo(buf) {
   // FF FF FF FF 49 [protocol] [name\0] [map\0] [folder\0] [game\0] [appid 2B] [players] [maxPlayers]
   if (buf.length < 12 || buf[4] !== 0x49) return null;
   let offset = 6; // past header(4) + type(1) + protocol(1)
