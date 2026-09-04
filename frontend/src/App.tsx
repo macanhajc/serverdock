@@ -1,5 +1,6 @@
 import { Component, ReactNode, ErrorInfo, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import i18n from './i18n';
@@ -9,6 +10,8 @@ import Auth from './pages/auth';
 import Setup from './pages/setup';
 import Blocked from './pages/public/Blocked';
 import PrivateDashboard from './pages/private';
+
+const queryClient = new QueryClient();
 
 interface ErrorBoundaryState {
   error: Error | null;
@@ -58,7 +61,13 @@ function SetupGate({ needsSetup, children }: { needsSetup: boolean; children: Re
   return needsSetup ? <Navigate to="/setup" replace /> : <>{children}</>;
 }
 
-function SetupRoute({ needsSetup, onSetupComplete }: { needsSetup: boolean; onSetupComplete: () => void }) {
+function SetupRoute({
+  needsSetup,
+  onSetupComplete,
+}: {
+  needsSetup: boolean;
+  onSetupComplete: () => void;
+}) {
   return needsSetup ? <Setup onSetupComplete={onSetupComplete} /> : <Navigate to="/auth" replace />;
 }
 
@@ -77,48 +86,55 @@ export default function App() {
   }
 
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="*" element={<Navigate to="/" replace />} />
-            <Route
-              path="/setup"
-              element={<SetupRoute needsSetup={needsSetup} onSetupComplete={() => setNeedsSetup(false)} />}
-            />
-            <Route
-              path="/"
-              element={
-                <SetupGate needsSetup={needsSetup}>
-                  <PublicDashboard />
-                </SetupGate>
-              }
-            />
-            <Route
-              path="/auth"
-              element={
-                <SetupGate needsSetup={needsSetup}>
-                  <Auth />
-                </SetupGate>
-              }
-            />
-            <Route path="/blocked" element={<Blocked />} />
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <ToastProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="*" element={<Navigate to="/" replace />} />
+              <Route
+                path="/setup"
+                element={
+                  <SetupRoute
+                    needsSetup={needsSetup}
+                    onSetupComplete={() => setNeedsSetup(false)}
+                  />
+                }
+              />
+              <Route
+                path="/"
+                element={
+                  <SetupGate needsSetup={needsSetup}>
+                    <PublicDashboard />
+                  </SetupGate>
+                }
+              />
+              <Route
+                path="/auth"
+                element={
+                  <SetupGate needsSetup={needsSetup}>
+                    <Auth />
+                  </SetupGate>
+                }
+              />
+              <Route path="/blocked" element={<Blocked />} />
 
-            <Route
-              path="/admin/*"
-              element={
-                <SetupGate needsSetup={needsSetup}>
-                  <ProtectedRoute>
-                    <ErrorBoundary>
-                      <PrivateDashboard />
-                    </ErrorBoundary>
-                  </ProtectedRoute>
-                </SetupGate>
-              }
-            />
-          </Routes>
-        </BrowserRouter>
-      </ToastProvider>
-    </AuthProvider>
+              <Route
+                path="/admin/*"
+                element={
+                  <SetupGate needsSetup={needsSetup}>
+                    <ProtectedRoute>
+                      <ErrorBoundary>
+                        <PrivateDashboard />
+                      </ErrorBoundary>
+                    </ProtectedRoute>
+                  </SetupGate>
+                }
+              />
+            </Routes>
+          </BrowserRouter>
+        </ToastProvider>
+      </AuthProvider>
+    </QueryClientProvider>
   );
 }

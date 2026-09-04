@@ -52,7 +52,9 @@ export function NetworkCard({ status, loaded, navigate }: NetworkCardProps) {
       </div>
 
       {isManual ? (
-        <span className="font-mono text-xs text-ink-3">{t('adminDashboard.networkManualLabel')}</span>
+        <span className="font-mono text-xs text-ink-3">
+          {t('adminDashboard.networkManualLabel')}
+        </span>
       ) : isDown ? (
         <span className="font-mono text-xs" style={{ color: 'var(--red)' }}>
           {t('network.providerInactive', { provider: providerMeta.label })}

@@ -23,7 +23,9 @@ function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-0.5">
       <span className="font-mono text-[11px] text-ink-3 uppercase tracking-wider">{label}</span>
-      <span className="font-mono text-sm text-ink truncate" title={value}>{value}</span>
+      <span className="font-mono text-sm text-ink truncate" title={value}>
+        {value}
+      </span>
     </div>
   );
 }

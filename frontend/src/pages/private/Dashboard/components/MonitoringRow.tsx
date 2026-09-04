@@ -2,7 +2,13 @@ import { memo } from 'react';
 import { ArrowDown, ArrowUp, Play, Refresh, Stop, Trash } from 'pixelarticons/react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../../../context/AuthContext';
-import { Button, CopyButton, StatusBadge, Sparkline, ServerIssuesBadge } from '../../../../components';
+import {
+  Button,
+  CopyButton,
+  StatusBadge,
+  Sparkline,
+  ServerIssuesBadge,
+} from '../../../../components';
 import { UptimeTicker } from '../../../../components/core/UptimeTicker';
 import { fmtBytes, timeAgo, formatDate } from '../../../../utils/format';
 import {

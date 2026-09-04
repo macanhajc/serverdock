@@ -57,13 +57,13 @@ export function GlobalStatsCard({
         </div>
 
         <div className="h-1 relative" style={{ background: 'var(--line-2)' }}>
-            <div
-              className="absolute inset-y-0 left-0 transition-[width] duration-500"
-              style={{
-                width: `${cpuPct}%`,
-                background: cpuPct > 80 ? 'var(--yellow)' : 'var(--accent)',
-              }}
-            />
+          <div
+            className="absolute inset-y-0 left-0 transition-[width] duration-500"
+            style={{
+              width: `${cpuPct}%`,
+              background: cpuPct > 80 ? 'var(--yellow)' : 'var(--accent)',
+            }}
+          />
         </div>
 
         {hostCpuModel && (

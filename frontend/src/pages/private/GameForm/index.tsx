@@ -1,24 +1,35 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Blocks, ChevronLeft, Close, Download, Trash, Upload } from 'pixelarticons/react';
+import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
+import { Blocks, ChevronLeft } from 'pixelarticons/react';
 import { useAuth } from '../../../context/AuthContext';
 import { useBuildLog } from '../../../hooks/useBuildLog';
 import { templates } from '../../../data/templates';
-import { Button } from '../../../components/core/Button';
 import { TextField } from '../../../components/forms/TextField';
-import { SegmentedControl } from '../../../components/forms/SegmentedControl';
-import { Toggle } from '../../../components/core/Toggle';
 import { ConfirmModal } from '../../../components/core/ConfirmModal';
-import { StatusBadge } from '../../../components/core/StatusBadge';
-import type { GameTemplate, PortFormRow, EnvVarRow } from '../../../types';
+import type { GameTemplate } from '../../../types';
 import { TplTile } from './components/TplTile';
 import { FormSection } from './components/FormSection';
-import { BuildLine } from './components/BuildLine';
-import { DockerfileField } from './components/DockerfileField';
 import { PortRow } from './components/PortRow';
 import { AddRowBtn } from './components/AddRowBtn';
 import { EnvRow } from './components/EnvRow';
+import { AvatarUploadField } from './components/AvatarUploadField';
+import { BuildLogPanel } from './components/BuildLogPanel';
+import { FormFooter } from './components/FormFooter';
+import {
+  RhfTextField,
+  RhfSegmentedControl,
+  RhfToggle,
+  RhfDockerfileField,
+} from './components/RhfFields';
+import { useOtherGames } from './hooks/useOtherGames';
+import { useGame } from './hooks/useGame';
+import { useGameDockerfile } from './hooks/useGameDockerfile';
+import { useSaveGame } from './hooks/useSaveGame';
+import { useDeleteGame } from './hooks/useDeleteGame';
+import { useExportGame } from './hooks/useExportGame';
+import { BLANK_FORM_VALUES, gameToFormValues, templateToFormValues } from './formSchema';
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -47,130 +58,78 @@ export default function GameForm() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const isEdit = !!id;
-  const { token, hasPermission } = useAuth();
+  const { hasPermission } = useAuth();
   const canSave = hasPermission(isEdit ? 'games:edit' : 'games:create');
   const navigate = useNavigate();
 
-  const [name, setName] = useState('');
-  const [slug, setSlug] = useState('');
-  const [description, setDescription] = useState('');
-  const [imageSource, setImageSource] = useState('public');
-  const [image, setImage] = useState('');
-  const [dataMount, setDataMount] = useState('/data');
-  const [dockerfile, setDockerfile] = useState('');
-  const [ports, setPorts] = useState<PortFormRow[]>([]);
-  const [envVars, setEnvVars] = useState<EnvVarRow[]>([]);
+  const { control, getValues, setValue, reset, formState } = useForm({
+    defaultValues: BLANK_FORM_VALUES,
+  });
+  const portsArray = useFieldArray({ control, name: 'ports' });
+  const envArray = useFieldArray({ control, name: 'envVars' });
+
+  // Reactive reads for the handful of fields that drive conditional UI or
+  // get shown outside their own Controller (everything else stays
+  // uncontrolled-from-index.tsx's perspective — Controller/useFieldArray own it).
+  const watchedName = useWatch({ control, name: 'name' });
+  const watchedSlug = useWatch({ control, name: 'slug' });
+  const imageSource = useWatch({ control, name: 'imageSource' });
+  const queryType = useWatch({ control, name: 'queryType' });
+  const rconEnabled = useWatch({ control, name: 'rconEnabled' });
+
   const [idTouched, setIdTouched] = useState(false);
 
-  const [storeUrl, setStoreUrl] = useState('');
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [removeAvatar, setRemoveAvatar] = useState(false);
   const [avatarError, setAvatarError] = useState('');
-  const avatarInputRef = useRef<HTMLInputElement>(null);
-
-  const [rconEnabled, setRconEnabled] = useState(false);
-  const [rconPort, setRconPort] = useState('');
-  const [rconPassword, setRconPassword] = useState('');
-  const [rconListCommand, setRconListCommand] = useState('');
-  const [rconBroadcastCmd, setRconBroadcastCmd] = useState('');
+  // Avatar changes aren't part of the RHF-managed values (they're a separate
+  // multipart upload step, not JSON form data), so formState.isDirty can't see
+  // them — this fills that one gap alongside it.
+  const [avatarDirty, setAvatarDirty] = useState(false);
 
   const [activeTpl, setActiveTpl] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [dirty, setDirty] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState<(() => void) | null>(null);
 
-  // Fields not driven by a native <input>/<textarea>/<select> (SegmentedControl,
-  // Toggle) don't bubble a "change" event up to the onChangeCapture below, so
-  // their onChange props also call this directly.
-  function markDirty() {
-    setDirty(true);
-  }
-
-  // Native form field edits bubble a change event through here regardless of
-  // which TextField/select fired it — cheaper than instrumenting every one.
-  function handleFormChangeCapture() {
-    setDirty(true);
-  }
+  const dirty = formState.isDirty || avatarDirty;
 
   function guardLeave(go: () => void) {
     if (dirty) setConfirmLeave(() => go);
     else go();
   }
-  const [otherGames, setOtherGames] = useState<
-    Array<{ id: string; name: string; ports?: Array<{ host: number; protocol: string }> }>
-  >([]);
-  const [queryType, setQueryType] = useState('none');
-  const [queryPort, setQueryPort] = useState('');
-  const [cpuLimit, setCpuLimit] = useState('');
-  const [memoryLimit, setMemoryLimit] = useState('');
 
   const [savedId, setSavedId] = useState<string | null>(isEdit ? id : null);
   const { status: buildStatus, log: buildLog, startBuild } = useBuildLog(savedId);
-  const buildLogRef = useRef<HTMLDivElement>(null);
+
+  const otherGamesQuery = useOtherGames();
+  const otherGames = (otherGamesQuery.data ?? []).filter((g) => g.id !== id);
+
+  const gameQuery = useGame(id, isEdit);
+  const dockerfileQuery = useGameDockerfile(id, isEdit && gameQuery.data?.imageSource === 'local');
+  const saveGame = useSaveGame();
+  const deleteGame = useDeleteGame();
+  const exportGame = useExportGame();
+  const saving = saveGame.isPending || deleteGame.isPending || exportGame.isPending;
 
   useEffect(() => {
-    fetch('/api/games', { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((list) => setOtherGames(list.filter((g: { id: string }) => g.id !== id)))
-      .catch(() => {});
-  }, [id, token]);
+    const game = gameQuery.data;
+    if (!game) return;
+    reset(gameToFormValues(game));
+    setAvatarPreview(game.avatar ? `/api/servers/${id}/avatar?v=${game.avatarVersion ?? 0}` : null);
+    setAvatarFile(null);
+    setRemoveAvatar(false);
+    setAvatarDirty(false);
+  }, [gameQuery.data, id, reset]);
 
   useEffect(() => {
-    if (!isEdit) return;
-    fetch(`/api/games/${id}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((game) => {
-        setName(game.name);
-        setSlug(game.id);
-        setDescription(game.description ?? '');
-        setImageSource(game.imageSource ?? 'public');
-        setImage(game.image ?? '');
-        setDataMount(game.dataMount ?? '/data');
-        setStoreUrl(game.storeUrl ?? '');
-        setAvatarPreview(
-          game.avatar ? `/api/servers/${id}/avatar?v=${game.avatarVersion ?? 0}` : null
-        );
-        setAvatarFile(null);
-        setRemoveAvatar(false);
-        setQueryType(game.query?.type ?? 'none');
-        setQueryPort(game.query?.port ? String(game.query.port) : '');
-        if (game.imageSource === 'local') {
-          fetch(`/api/games/${id}/dockerfile`, { headers: { Authorization: `Bearer ${token}` } })
-            .then((r) => (r.ok ? r.json() : null))
-            .then((data) => setDockerfile(data?.content ?? ''))
-            .catch(() => {});
-        } else {
-          setDockerfile('');
-        }
-        setPorts(
-          (game.ports ?? []).map((p: { host: number; container: number; protocol: string }) => ({
-            ...p,
-            host: String(p.host),
-            container: String(p.container),
-          }))
-        );
-        setEnvVars(game.environment ?? []);
-        setCpuLimit(game.resources?.cpuLimit != null ? String(game.resources.cpuLimit) : '');
-        setMemoryLimit(
-          game.resources?.memoryLimit != null ? String(game.resources.memoryLimit) : ''
-        );
-        setRconEnabled(!!game.rcon?.enabled);
-        setRconPort(game.rcon?.port ? String(game.rcon.port) : '');
-        setRconPassword(game.rcon?.password ?? '');
-        setRconListCommand(game.rcon?.listCommand ?? '');
-        setRconBroadcastCmd(game.rcon?.commands?.broadcast ?? '');
-      })
-      .catch(() => setError(t('gameForm.errLoadFailed')));
-  }, [id, isEdit, token, t]);
+    if (dockerfileQuery.data) setValue('dockerfile', dockerfileQuery.data.content ?? '');
+  }, [dockerfileQuery.data, setValue]);
 
   useEffect(() => {
-    if (buildLogRef.current) {
-      buildLogRef.current.scrollTop = buildLogRef.current.scrollHeight;
-    }
-  }, [buildLog]);
+    if (gameQuery.isError) setError(t('gameForm.errLoadFailed'));
+  }, [gameQuery.isError, t]);
 
   // Revoke the previous object URL whenever the preview changes/unmounts —
   // server-side avatar URLs (starting with /api/...) aren't blob: URLs, so this is a no-op for those.
@@ -196,7 +155,7 @@ export default function GameForm() {
     setAvatarFile(file);
     setAvatarPreview(URL.createObjectURL(file));
     setRemoveAvatar(false);
-    markDirty();
+    setAvatarDirty(true);
   }
 
   function handleRemoveAvatar() {
@@ -204,96 +163,62 @@ export default function GameForm() {
     setAvatarFile(null);
     setAvatarPreview(null);
     setRemoveAvatar(true);
-    if (avatarInputRef.current) avatarInputRef.current.value = '';
-    markDirty();
+    setAvatarDirty(true);
   }
 
   function applyTemplate(tpl: GameTemplate) {
-    markDirty();
+    // cpuLimit/memoryLimit are deliberately carried over rather than reset —
+    // see templateToFormValues.
+    const current = getValues();
+    reset(
+      {
+        ...templateToFormValues(tpl),
+        cpuLimit: current.cpuLimit,
+        memoryLimit: current.memoryLimit,
+      },
+      { keepDefaultValues: true }
+    );
     setActiveTpl(tpl.id);
     setIdTouched(false);
-    setName('');
-    setSlug('');
-    setDescription(tpl.description ?? '');
-    setImageSource(tpl.imageSource ?? 'public');
-    setImage(tpl.image ?? '');
-    setDataMount(tpl.dataMount ?? '/data');
-    setQueryType(tpl.query?.type ?? 'none');
-    setQueryPort(tpl.query?.port ? String(tpl.query.port) : '');
-    setDockerfile(tpl.dockerfileTemplate ?? '');
-    setPorts(
-      (tpl.ports ?? []).map((p) => ({ ...p, host: String(p.host), container: String(p.container) }))
-    );
-    setEnvVars(tpl.environment ?? []);
-    setRconEnabled(!!tpl.rcon?.enabled);
-    setRconPort(tpl.rcon?.port ? String(tpl.rcon.port) : '');
-    setRconPassword(tpl.rcon?.password ?? '');
-    setRconListCommand('');
-    setRconBroadcastCmd(tpl.rcon?.commands?.broadcast ?? '');
-    setStoreUrl('');
     setAvatarFile(null);
     setAvatarPreview(null);
     setRemoveAvatar(false);
+    setAvatarDirty(false);
     setAvatarError('');
   }
 
   function handleNameChange(v: string) {
-    setName(v);
-    if (!idTouched) setSlug(slugify(v));
+    setValue('name', v, { shouldDirty: true });
+    if (!idTouched) setValue('slug', slugify(v), { shouldDirty: true });
   }
 
   function handleSlugChange(v: string) {
     setIdTouched(true);
-    setSlug(v);
+    setValue('slug', v, { shouldDirty: true });
   }
 
-  function addPort() {
-    markDirty();
-    setPorts((prev) => [...prev, { host: '', container: '', protocol: 'tcp' }]);
-  }
-  function updatePort(idx: number, field: keyof PortFormRow, value: string) {
-    markDirty();
-    setPorts((prev) => prev.map((p, i) => (i === idx ? { ...p, [field]: value } : p)));
-  }
-  function removePort(idx: number) {
-    markDirty();
-    setPorts((prev) => prev.filter((_, i) => i !== idx));
-  }
-
-  function addEnvVar() {
-    markDirty();
-    setEnvVars((prev) => [...prev, { key: '', value: '' }]);
-  }
-  function updateEnvVar(idx: number, field: keyof EnvVarRow | 'pinned', value: string | boolean) {
-    markDirty();
-    setEnvVars((prev) => prev.map((e, i) => (i === idx ? { ...e, [field]: value } : e)));
-  }
-  function removeEnvVar(idx: number) {
-    markDirty();
-    setEnvVars((prev) => prev.filter((_, i) => i !== idx));
-  }
-
-  async function handleSave(buildAfter = false) {
+  function handleSave(buildAfter = false) {
     setError('');
+    const values = getValues();
 
-    if (!name.trim()) {
+    if (!values.name.trim()) {
       setError(t('gameForm.errNameRequired'));
       return;
     }
-    if (!slug.trim()) {
+    if (!values.slug.trim()) {
       setError(t('gameForm.errIdRequired'));
       return;
     }
-    if (!/^[a-z0-9-]+$/.test(slug)) {
+    if (!/^[a-z0-9-]+$/.test(values.slug)) {
       setError(t('gameForm.errIdInvalid'));
       return;
     }
-    if (!image.trim()) {
+    if (!values.image.trim()) {
       setError(t('gameForm.errImageRequired'));
       return;
     }
 
-    for (const p of ports) {
+    for (const p of values.ports) {
       const h = Number(p.host);
       const c = Number(p.container);
       if (!p.host || !p.container) continue;
@@ -307,189 +232,124 @@ export default function GameForm() {
       }
     }
 
-    if (cpuLimit.trim()) {
-      const v = parseFloat(cpuLimit);
+    if (values.cpuLimit.trim()) {
+      const v = parseFloat(values.cpuLimit);
       if (isNaN(v) || v <= 0) {
         setError(t('gameForm.errCpuInvalid'));
         return;
       }
     }
-    if (memoryLimit.trim()) {
-      const v = parseInt(memoryLimit, 10);
+    if (values.memoryLimit.trim()) {
+      const v = parseInt(values.memoryLimit, 10);
       if (isNaN(v) || v < 128) {
         setError(t('gameForm.errMemoryInvalid'));
         return;
       }
     }
-    if (rconEnabled) {
-      const p = Number(rconPort);
-      if (!rconPort || !Number.isInteger(p) || p < 1 || p > 65535) {
+    if (values.rconEnabled) {
+      const p = Number(values.rconPort);
+      if (!values.rconPort || !Number.isInteger(p) || p < 1 || p > 65535) {
         setError(t('gameForm.errRconPort'));
         return;
       }
-      if (!rconPassword.trim()) {
+      if (!values.rconPassword.trim()) {
         setError(t('gameForm.errRconPassword'));
         return;
       }
     }
 
-    setSaving(true);
-
     const gameData = {
-      id: slug,
-      name: name.trim(),
-      description: description.trim(),
-      imageSource,
-      image: image.trim(),
-      storeUrl: storeUrl.trim() || null,
-      dataMount: dataMount.trim() || '/data',
-      query: queryType === 'a2s' && queryPort ? { type: 'a2s', port: Number(queryPort) } : null,
-      ports: ports
+      id: values.slug,
+      name: values.name.trim(),
+      description: values.description.trim(),
+      imageSource: values.imageSource,
+      image: values.image.trim(),
+      storeUrl: values.storeUrl.trim() || null,
+      dataMount: values.dataMount.trim() || '/data',
+      query:
+        values.queryType === 'a2s' && values.queryPort
+          ? { type: 'a2s', port: Number(values.queryPort) }
+          : null,
+      ports: values.ports
         .filter((p) => p.host && p.container)
         .map((p) => ({
           host: Number(p.host),
           container: Number(p.container),
           protocol: p.protocol,
         })),
-      environment: envVars
+      environment: values.envVars
         .filter((e) => e.key.trim())
         .map((e) => ({ key: e.key.trim(), value: e.value, pinned: !!e.pinned })),
       resources: {
-        cpuLimit: cpuLimit.trim() ? parseFloat(cpuLimit) : null,
-        memoryLimit: memoryLimit.trim() ? parseInt(memoryLimit, 10) : null,
+        cpuLimit: values.cpuLimit.trim() ? parseFloat(values.cpuLimit) : null,
+        memoryLimit: values.memoryLimit.trim() ? parseInt(values.memoryLimit, 10) : null,
       },
-      rcon: rconEnabled
+      rcon: values.rconEnabled
         ? {
             enabled: true,
-            port: Number(rconPort),
-            password: rconPassword.trim(),
-            listCommand: rconListCommand.trim() || undefined,
-            commands: rconBroadcastCmd.trim() ? { broadcast: rconBroadcastCmd.trim() } : undefined,
+            port: Number(values.rconPort),
+            password: values.rconPassword.trim(),
+            listCommand: values.rconListCommand.trim() || undefined,
+            commands: values.rconBroadcastCmd.trim()
+              ? { broadcast: values.rconBroadcastCmd.trim() }
+              : undefined,
           }
         : { enabled: false },
     };
 
-    const url = isEdit ? `/api/games/${id}` : '/api/games';
-    const method = isEdit ? 'PUT' : 'POST';
-
-    const res = await fetch(url, {
-      method,
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(gameData),
-    }).catch(() => null);
-
-    if (!res || !res.ok) {
-      const data = await res?.json().catch(() => ({}));
-      setError(data?.error ?? t('gameForm.errSaveFailed'));
-      setSaving(false);
-      return;
-    }
-
-    // The config record is saved past this point — dockerfile/avatar/build
-    // substeps below can still fail, but there's nothing left to "discard".
-    setDirty(false);
-
-    const targetId = isEdit ? id! : slug;
-
-    if (imageSource === 'local' && dockerfile.trim()) {
-      const dfRes = await fetch(`/api/games/${targetId}/dockerfile`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: dockerfile }),
-      }).catch(() => null);
-
-      if (!dfRes || !dfRes.ok) {
-        const data = await dfRes?.json().catch(() => ({}));
-        setError(data?.error ?? t('gameForm.errDockerfileFailed'));
-        setSaving(false);
-        return;
+    saveGame.mutate(
+      {
+        isEdit,
+        id,
+        slug: values.slug,
+        gameData,
+        dockerfile: values.dockerfile,
+        imageSource: values.imageSource,
+        avatarFile,
+        removeAvatar,
+        buildAfter,
+        onConfigSaved: () => {
+          // The config record is saved past this point — dockerfile/avatar/build
+          // substeps below can still fail, but there's nothing left to "discard".
+          reset(getValues());
+          setAvatarDirty(false);
+        },
+      },
+      {
+        onSuccess: (result) => {
+          if (!result.built) {
+            navigate(`/admin/servers/${id ?? values.slug}`);
+            return;
+          }
+          setSavedId(result.targetId);
+          startBuild();
+        },
+        onError: (err) => {
+          setError(err instanceof Error && err.message ? err.message : t('gameForm.errSaveFailed'));
+        },
       }
-    }
-
-    if (avatarFile) {
-      const formData = new FormData();
-      formData.append('avatar', avatarFile);
-      const avatarRes = await fetch(`/api/games/${targetId}/avatar`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      }).catch(() => null);
-
-      if (!avatarRes || !avatarRes.ok) {
-        const data = await avatarRes?.json().catch(() => ({}));
-        setError(data?.error ?? t('gameForm.errAvatarFailed'));
-        setSaving(false);
-        return;
-      }
-    } else if (removeAvatar && isEdit) {
-      await fetch(`/api/games/${targetId}/avatar`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => null);
-    }
-
-    if (!buildAfter) {
-      navigate(`/admin/servers/${id ?? slug}`);
-      return;
-    }
-
-    const buildRes = await fetch(`/api/games/${targetId}/build`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-    }).catch(() => null);
-
-    if (!buildRes || !buildRes.ok) {
-      const data = await buildRes?.json().catch(() => ({}));
-      setError(data?.error ?? t('gameForm.errBuildFailed'));
-      setSaving(false);
-      return;
-    }
-
-    setSavedId(targetId);
-    startBuild();
-    setSaving(false);
+    );
   }
 
-  async function handleDelete() {
-    setSaving(true);
-    const res = await fetch(`/api/games/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    }).catch(() => null);
-
-    if (!res || !res.ok) {
-      const data = await res?.json().catch(() => ({}));
-      setError(data?.error ?? t('gameForm.errDeleteFailed'));
-      setSaving(false);
-      return;
-    }
-
-    navigate('/admin');
-  }
-
-  // Config + Dockerfile only — no data/, no avatar image bytes. Lets an admin
-  // version or migrate a game's definition independently of its data backups.
-  async function handleExport() {
+  function handleDelete() {
     if (!id) return;
-    try {
-      const res = await fetch(`/api/games/${id}/export`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data?.error ?? t('gameForm.errExportFailed'));
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${id}.serverdock.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      setError(t('gameForm.errExportFailed'));
-    }
+    setError('');
+    deleteGame.mutate(id, {
+      onSuccess: () => navigate('/admin'),
+      onError: (err) => {
+        setError(err instanceof Error && err.message ? err.message : t('gameForm.errDeleteFailed'));
+      },
+    });
+  }
+
+  function handleExport() {
+    if (!id) return;
+    setError('');
+    exportGame.mutate(id, {
+      onError: (err) => {
+        setError(err instanceof Error && err.message ? err.message : t('gameForm.errExportFailed'));
+      },
+    });
   }
 
   useEffect(() => {
@@ -533,7 +393,7 @@ export default function GameForm() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto" onChangeCapture={handleFormChangeCapture}>
+      <div className="flex-1 overflow-y-auto">
         <div className="px-6 pt-6 pb-8 container">
           {!isEdit && (
             <div className="mb-6">
@@ -556,29 +416,43 @@ export default function GameForm() {
 
           <FormSection title={t('gameForm.basicTitle')} desc={t('gameForm.basicDesc')}>
             <div className="grid grid-cols-2 gap-[14px_18px]">
-              <TextField
-                label={t('gameForm.fieldName')}
-                placeholder="e.g. Valheim"
-                value={name}
-                onChange={(e) => handleNameChange(e.target.value)}
+              <Controller
+                control={control}
+                name="name"
+                render={({ field }) => (
+                  <TextField
+                    label={t('gameForm.fieldName')}
+                    placeholder="e.g. Valheim"
+                    value={field.value}
+                    onChange={(e) => handleNameChange(e.target.value)}
+                    onBlur={field.onBlur}
+                  />
+                )}
               />
-              <TextField
-                label={t('gameForm.fieldIdSlug')}
-                hint={isEdit ? t('gameForm.hintLocked') : t('gameForm.hintAuto')}
-                mono
-                placeholder="valheim"
-                value={slug}
-                onChange={(e) => handleSlugChange(e.target.value)}
-                disabled={isEdit}
+              <Controller
+                control={control}
+                name="slug"
+                render={({ field }) => (
+                  <TextField
+                    label={t('gameForm.fieldIdSlug')}
+                    hint={isEdit ? t('gameForm.hintLocked') : t('gameForm.hintAuto')}
+                    mono
+                    placeholder="valheim"
+                    value={field.value}
+                    onChange={(e) => handleSlugChange(e.target.value)}
+                    onBlur={field.onBlur}
+                    disabled={isEdit}
+                  />
+                )}
               />
             </div>
-            <TextField
+            <RhfTextField
+              control={control}
+              name="description"
               label={t('gameForm.fieldDescription')}
               hint={t('gameForm.hintOptional')}
               textarea
               placeholder={t('gameForm.placeholderDesc')}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
               className="mt-4"
             />
           </FormSection>
@@ -588,76 +462,44 @@ export default function GameForm() {
             desc={t('gameForm.presentationDesc')}
           >
             <div className="grid grid-cols-[120px_1fr] gap-[14px_18px] items-start">
-              <div className="flex flex-col gap-2">
-                <div className="w-30 h-30 border border-line bg-bg-2 overflow-hidden grid place-items-center">
-                  {avatarPreview ? (
-                    <img src={avatarPreview} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="font-mono text-2xl font-bold text-ink-3">
-                      {(name || slug).slice(0, 2).toUpperCase() || '—'}
-                    </span>
-                  )}
-                </div>
-                <div className="flex gap-2" style={{ width: 'max-content' }}>
-                  <Button size="sm" onClick={() => avatarInputRef.current?.click()}>
-                    <Upload width={12} height={12} className="mr-1.5" />
-                    {t('gameForm.avatarUpload')}
-                  </Button>
-                  {avatarPreview && (
-                    <Button size="sm" variant="ghost" onClick={handleRemoveAvatar}>
-                      <Trash width={12} height={12} className="mr-1.5" />
-                      {t('gameForm.avatarRemove')}
-                    </Button>
-                  )}
-                </div>
-                <input
-                  ref={avatarInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
-                  className="hidden"
-                  onChange={(e) => handleAvatarChange(e.target.files?.[0] ?? null)}
-                />
-                {avatarError && (
-                  <span className="font-mono text-[10px] text-red">{avatarError}</span>
-                )}
-              </div>
-              <TextField
+              <AvatarUploadField
+                name={watchedName}
+                slug={watchedSlug}
+                avatarPreview={avatarPreview}
+                avatarError={avatarError}
+                onFileChange={handleAvatarChange}
+                onRemove={handleRemoveAvatar}
+              />
+              <RhfTextField
+                control={control}
+                name="storeUrl"
                 label={t('gameForm.fieldStoreUrl')}
                 hint={t('gameForm.hintStoreUrl')}
                 mono
                 placeholder="https://store.steampowered.com/app/…"
-                value={storeUrl}
-                onChange={(e) => setStoreUrl(e.target.value)}
               />
             </div>
           </FormSection>
 
           <FormSection title={t('gameForm.imageTitle')} desc={t('gameForm.imageDesc')}>
-            <SegmentedControl
-              options={imgSrcOptions}
-              value={imageSource}
-              onChange={(v) => {
-                markDirty();
-                setImageSource(v);
-              }}
-            />
+            <RhfSegmentedControl control={control} name="imageSource" options={imgSrcOptions} />
 
             {!isLocalImage && (
               <div className="mt-4 grid grid-cols-[1fr_200px] gap-[14px_18px]">
-                <TextField
+                <RhfTextField
+                  control={control}
+                  name="image"
                   label={t('gameForm.fieldDockerImage')}
                   mono
                   placeholder={t('gameForm.placeholderDockerImage')}
-                  value={image}
-                  onChange={(e) => setImage(e.target.value)}
                 />
-                <TextField
+                <RhfTextField
+                  control={control}
+                  name="dataMount"
                   label={t('gameForm.fieldDataPath')}
                   hint={t('gameForm.hintSavesGo')}
                   mono
                   placeholder="/data"
-                  value={dataMount}
-                  onChange={(e) => setDataMount(e.target.value)}
                 />
               </div>
             )}
@@ -665,95 +507,48 @@ export default function GameForm() {
             {isLocalImage && (
               <>
                 <div className="mt-4 grid grid-cols-[1fr_200px] gap-[14px_18px]">
-                  <TextField
+                  <RhfTextField
+                    control={control}
+                    name="image"
                     label={t('gameForm.fieldBuiltImage')}
                     hint={t('gameForm.hintImageTag')}
                     mono
                     placeholder={t('gameForm.placeholderBuiltImage')}
-                    value={image}
-                    onChange={(e) => setImage(e.target.value)}
                   />
-                  <TextField
+                  <RhfTextField
+                    control={control}
+                    name="dataMount"
                     label={t('gameForm.fieldDataPath')}
                     hint={t('gameForm.hintSavesGo')}
                     mono
                     placeholder="/data"
-                    value={dataMount}
-                    onChange={(e) => setDataMount(e.target.value)}
                   />
                 </div>
-                <DockerfileField
+                <RhfDockerfileField
+                  control={control}
                   label={t('gameForm.fieldDockerfile')}
                   placeholder={
                     isEdit
                       ? t('gameForm.placeholderKeepDockerfile')
                       : t('gameForm.placeholderNewDockerfile')
                   }
-                  value={dockerfile}
-                  onChange={(value) => {
-                    setDockerfile(value);
-                    markDirty();
-                  }}
                   className="mt-4"
                 />
 
-                <div className="mt-4 border border-line bg-[#0c0c0c]">
-                  <div className="flex items-center gap-3 px-4 py-3 border-b border-line bg-bg-1">
-                    <span className="font-mono text-sm tracking-[.08em] uppercase text-ink-3">
-                      {t('gameForm.buildLogTitle')}
-                    </span>
-                    {buildStatus !== 'none' && (
-                      <>
-                        <StatusBadge
-                          status={
-                            buildStatus === 'building'
-                              ? 'building'
-                              : buildStatus === 'ok'
-                                ? 'built'
-                                : 'none'
-                          }
-                          label={
-                            buildStatus === 'building'
-                              ? t('gameForm.buildBuilding')
-                              : buildStatus === 'ok'
-                                ? t('gameForm.buildComplete')
-                                : t('gameForm.buildFailed')
-                          }
-                          className="ml-auto"
-                        />
-                        {!buildRunning && (
-                          <Button
-                            size="sm"
-                            variant={buildStatus === 'ok' ? 'primary' : 'ghost'}
-                            onClick={() => navigate('/admin')}
-                          >
-                            {buildStatus === 'ok'
-                              ? t('gameForm.buildToDashboard')
-                              : t('gameForm.buildClose')}
-                          </Button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  <div
-                    ref={buildLogRef}
-                    className="font-mono text-sm leading-6 px-3 py-3.5 h-37.5 overflow-y-auto"
-                  >
-                    {buildStatus === 'none' && (
-                      <span className="text-ink-3">{t('gameForm.buildLogPrompt')}</span>
-                    )}
-                    {buildLog.map((line, i) => (
-                      <BuildLine key={i} line={line} />
-                    ))}
-                  </div>
-                </div>
+                <BuildLogPanel
+                  buildStatus={buildStatus}
+                  buildLog={buildLog}
+                  onGoToDashboard={() => navigate('/admin')}
+                />
               </>
             )}
           </FormSection>
 
           <FormSection title={t('gameForm.resourcesTitle')} desc={t('gameForm.resourcesDesc')}>
             <div className="grid grid-cols-2 gap-4">
-              <TextField
+              <RhfTextField
+                control={control}
+                name="cpuLimit"
                 label={t('gameForm.fieldCpuLimit')}
                 hint={t('gameForm.hintCores')}
                 mono
@@ -761,10 +556,10 @@ export default function GameForm() {
                 step="0.1"
                 min="0.1"
                 placeholder="1"
-                value={cpuLimit}
-                onChange={(e) => setCpuLimit(e.target.value)}
               />
-              <TextField
+              <RhfTextField
+                control={control}
+                name="memoryLimit"
                 label={t('gameForm.fieldMemoryLimit')}
                 hint={t('gameForm.hintMB')}
                 mono
@@ -772,14 +567,12 @@ export default function GameForm() {
                 step="1"
                 min="128"
                 placeholder="1024"
-                value={memoryLimit}
-                onChange={(e) => setMemoryLimit(e.target.value)}
               />
             </div>
           </FormSection>
 
           <FormSection title={t('gameForm.portsTitle')} desc={t('gameForm.portsDesc')}>
-            {ports.length > 0 && (
+            {portsArray.fields.length > 0 && (
               <div className="grid gap-2 mb-2 grid-cols-[1fr_1fr_100px_34px]">
                 {[
                   t('gameForm.hostPort'),
@@ -801,24 +594,31 @@ export default function GameForm() {
                     takenMap.set(`${p.host}/${p.protocol}`, g.name);
                   }
                 }
-                return ports.map((p, i) => (
+                return portsArray.fields.map((field, i) => (
                   <PortRow
-                    key={i}
-                    port={p}
+                    key={field.id}
+                    port={field}
                     idx={i}
-                    onChange={updatePort}
-                    onRemove={removePort}
-                    conflictsWith={p.host ? takenMap.get(`${p.host}/${p.protocol}`) : undefined}
+                    onChange={(idx, key, value) =>
+                      portsArray.update(idx, { ...portsArray.fields[idx], [key]: value })
+                    }
+                    onRemove={portsArray.remove}
+                    conflictsWith={
+                      field.host ? takenMap.get(`${field.host}/${field.protocol}`) : undefined
+                    }
                   />
                 ));
               })()}
             </div>
 
-            <AddRowBtn onClick={addPort} label={t('gameForm.addPort')} />
+            <AddRowBtn
+              onClick={() => portsArray.append({ host: '', container: '', protocol: 'tcp' })}
+              label={t('gameForm.addPort')}
+            />
           </FormSection>
 
           <FormSection title={t('gameForm.envTitle')} desc={t('gameForm.envDesc')}>
-            {envVars.length > 0 && (
+            {envArray.fields.length > 0 && (
               <div className="grid gap-2 mb-2 grid-cols-[1fr_1.4fr_34px_34px]">
                 {[t('gameForm.envKey'), t('gameForm.envValue'), '', ''].map((h, i) => (
                   <span key={i} className="font-mono text-sm tracking-[.06em] uppercase text-ink-3">
@@ -828,41 +628,43 @@ export default function GameForm() {
               </div>
             )}
             <div className="flex flex-col gap-2">
-              {envVars.map((e, i) => (
+              {envArray.fields.map((field, i) => (
                 <EnvRow
-                  key={i}
-                  env={e}
+                  key={field.id}
+                  env={field}
                   idx={i}
-                  onChange={updateEnvVar}
-                  onRemove={removeEnvVar}
+                  onChange={(idx, key, value) =>
+                    envArray.update(idx, { ...envArray.fields[idx], [key]: value })
+                  }
+                  onRemove={envArray.remove}
                   pinnedLabel={t('gameForm.envPinned')}
                   pinLabel={t('gameForm.envPin')}
                 />
               ))}
             </div>
-            <AddRowBtn onClick={addEnvVar} label={t('gameForm.addVar')} />
+            <AddRowBtn
+              onClick={() => envArray.append({ key: '', value: '' })}
+              label={t('gameForm.addVar')}
+            />
           </FormSection>
 
           <FormSection title={t('gameForm.queryTitle')} desc={t('gameForm.queryDesc')}>
-            <SegmentedControl
+            <RhfSegmentedControl
+              control={control}
+              name="queryType"
               options={[
                 { label: t('gameForm.queryNone'), value: 'none' },
                 { label: t('gameForm.queryA2s'), value: 'a2s' },
               ]}
-              value={queryType}
-              onChange={(v) => {
-                markDirty();
-                setQueryType(v);
-              }}
             />
             {queryType === 'a2s' && (
-              <TextField
+              <RhfTextField
+                control={control}
+                name="queryPort"
                 label={t('gameForm.fieldQueryPort')}
                 hint={t('gameForm.hintA2sPort')}
                 mono
                 placeholder="27015"
-                value={queryPort}
-                onChange={(e) => setQueryPort(e.target.value)}
                 className="mt-4 max-w-50"
                 type="number"
                 min="1"
@@ -872,50 +674,43 @@ export default function GameForm() {
           </FormSection>
 
           <FormSection title={t('gameForm.rconTitle')} desc={t('gameForm.rconDesc')}>
-            <Toggle
-              checked={rconEnabled}
-              onChange={(v) => {
-                markDirty();
-                setRconEnabled(v);
-              }}
-              label={t('gameForm.rconEnabled')}
-            />
+            <RhfToggle control={control} label={t('gameForm.rconEnabled')} />
             {rconEnabled && (
               <div className="grid grid-cols-2 gap-[14px_18px] mt-4">
-                <TextField
+                <RhfTextField
+                  control={control}
+                  name="rconPort"
                   label={t('gameForm.fieldRconPort')}
                   mono
                   type="number"
                   min="1"
                   max="65535"
                   placeholder="25575"
-                  value={rconPort}
-                  onChange={(e) => setRconPort(e.target.value)}
                 />
-                <TextField
+                <RhfTextField
+                  control={control}
+                  name="rconPassword"
                   label={t('gameForm.fieldRconPass')}
                   mono
                   type="password"
                   placeholder="••••••••"
-                  value={rconPassword}
-                  onChange={(e) => setRconPassword(e.target.value)}
                 />
-                <TextField
+                <RhfTextField
+                  control={control}
+                  name="rconListCommand"
                   label={t('gameForm.fieldRconListCommand')}
                   hint={t('gameForm.hintRconListCommand')}
                   mono
                   placeholder="list"
-                  value={rconListCommand}
-                  onChange={(e) => setRconListCommand(e.target.value)}
                   className="col-span-2"
                 />
-                <TextField
+                <RhfTextField
+                  control={control}
+                  name="rconBroadcastCmd"
                   label={t('gameForm.fieldRconBroadcastCmd')}
                   hint={t('gameForm.hintRconBroadcastCmd')}
                   mono
                   placeholder="say {message}"
-                  value={rconBroadcastCmd}
-                  onChange={(e) => setRconBroadcastCmd(e.target.value)}
                   className="col-span-2"
                 />
               </div>
@@ -924,65 +719,25 @@ export default function GameForm() {
         </div>
       </div>
 
-      <div
-        className="shrink-0 flex items-center gap-3 px-6 py-3 border-t border-line"
-        style={{
-          background: 'color-mix(in oklab, var(--bg-1) 94%, transparent)',
-          backdropFilter: 'blur(6px)',
-        }}
-      >
-        {isEdit && hasPermission('games:delete') && (
-          <Button variant="danger" disabled={saving} onClick={() => setConfirmDelete(true)}>
-            <Trash width={12} height={12} className="mr-1.5" />
-            {t('gameForm.actDelete')}
-          </Button>
-        )}
-
-        {isEdit && (
-          <Button variant="ghost" disabled={saving} onClick={handleExport}>
-            <Download width={12} height={12} className="mr-1.5" />
-            {t('gameForm.actExport')}
-          </Button>
-        )}
-
-        <span className="font-mono text-sm text-ink-3">
-          {isLocalImage ? t('gameForm.footerSteam') : t('gameForm.footerPublic')}
-        </span>
-
-        <span className="flex-1" />
-
-        {error && <span className="font-mono text-sm text-red max-w-70">{error}</span>}
-
-        <Button
-          variant="ghost"
-          disabled={saving}
-          onClick={() => guardLeave(() => navigate('/admin'))}
-        >
-          <Close width={12} height={12} className="mr-1.5" />
-          {t('gameForm.actCancel')}
-        </Button>
-
-        {canSave && (
-          <Button variant="primary" disabled={saving} onClick={() => handleSave(false)}>
-            {saving && !buildRunning ? t('gameForm.actSaving') : t('gameForm.actSave')}
-          </Button>
-        )}
-
-        {isLocalImage && canSave && (
-          <Button
-            variant="primary"
-            disabled={saving || buildRunning}
-            onClick={() => handleSave(true)}
-          >
-            {saving ? t('gameForm.actSaving') : t('gameForm.actSaveAndBuild')}
-          </Button>
-        )}
-      </div>
+      <FormFooter
+        isEdit={isEdit}
+        canDelete={hasPermission('games:delete')}
+        canSave={canSave}
+        saving={saving}
+        buildRunning={buildRunning}
+        isLocalImage={isLocalImage}
+        error={error}
+        onDelete={() => setConfirmDelete(true)}
+        onExport={handleExport}
+        onCancel={() => guardLeave(() => navigate('/admin'))}
+        onSave={() => handleSave(false)}
+        onSaveAndBuild={() => handleSave(true)}
+      />
 
       {confirmDelete && (
         <ConfirmModal
           title={t('gameForm.deleteTitle')}
-          message={t('gameForm.deleteMessage', { name, id })}
+          message={t('gameForm.deleteMessage', { name: getValues('name'), id })}
           confirmLabel={t('gameForm.deleteConfirm')}
           onConfirm={() => {
             setConfirmDelete(false);

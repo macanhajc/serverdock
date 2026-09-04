@@ -1,12 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import socket from '../../../socket';
 import { ServerCard } from '../../../components/data/ServerCard';
 import { ServerCardSkeleton } from '../../../components/data/ServerCardSkeleton';
 import { LangSwitcher } from '../../../components/core/LangSwitcher';
 import { PageHeader } from '../../../components/core/PageHeader';
 import { HowToConnectModal } from './components/HowToConnectModal';
+import { useVisitorIdentify } from './hooks/useVisitorIdentify';
+import { useNetworkProvider } from './hooks/useNetworkProvider';
+import { useServers } from './hooks/useServers';
+import { useServerSocketSync } from './hooks/useServerSocketSync';
 import {
   toUiStatus,
   gameHue,
@@ -15,11 +18,6 @@ import {
   getDisplayPlayerCount,
 } from '../../../utils/serverStatus';
 import { timeAgo } from '../../../utils/format';
-import type { Server, NetworkProviderId } from '../../../types';
-
-interface Visitor {
-  username: string;
-}
 
 function maintenanceMinutes(at: string): number {
   return Math.max(1, Math.round((new Date(at).getTime() - Date.now()) / 60_000));
@@ -27,139 +25,17 @@ function maintenanceMinutes(at: string): number {
 
 export default function PublicDashboard() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
-  const [visitor, setVisitor] = useState<Visitor | null>(null);
-  const [identifying, setIdentifying] = useState(true);
-  const [servers, setServers] = useState<Server[]>([]);
-  const [serversLoaded, setServersLoaded] = useState(false);
   const [search, setSearch] = useState('');
   const [showHelp, setShowHelp] = useState(false);
-  const [networkProvider, setNetworkProvider] = useState<NetworkProviderId | null>(null);
 
-  // The "how to connect" walkthrough only has NetBird-specific steps written
-  // so far — gate it on the admin's chosen provider instead of showing
-  // instructions that don't match their actual setup.
-  useEffect(() => {
-    fetch('/api/settings/public')
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data) => setNetworkProvider(data.networkProvider ?? null))
-      .catch(() => {});
-  }, []);
+  const { visitor, identifying } = useVisitorIdentify();
+  const networkProviderQuery = useNetworkProvider();
+  const serversQuery = useServers(!!visitor);
+  useServerSocketSync(!!visitor);
 
-  useEffect(() => {
-    const token = localStorage.getItem('sd_visitor_token');
-    fetch('/api/visitors/identify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: token ?? undefined }),
-    })
-      .then(async (r) => {
-        if (r.status === 403) {
-          const body = await r.json().catch(() => ({}));
-          navigate(body.error === 'blocked' ? '/blocked' : '/auth', { replace: true });
-          return;
-        }
-        if (!r.ok) {
-          navigate('/auth', { replace: true });
-          return;
-        }
-        const data = await r.json();
-        localStorage.setItem('sd_visitor_token', data.token);
-        setVisitor({ username: data.username });
-      })
-      .catch(() => navigate('/auth', { replace: true }))
-      .finally(() => setIdentifying(false));
-  }, [navigate]);
-
-  const fetchServers = useCallback(
-    () =>
-      fetch('/api/servers')
-        .then((r) => (r.ok ? r.json() : Promise.reject()))
-        .then((data: Server[]) => setServers(data))
-        .catch(() => {})
-        .finally(() => setServersLoaded(true)),
-    []
-  );
-
-  useEffect(() => {
-    if (!visitor) return;
-
-    function onStatusAll(
-      snapshot: Array<{
-        id: string;
-        status: Server['status'];
-        players: number | null;
-        playerList?: string | null;
-      }>
-    ) {
-      setServers((prev) => {
-        if (prev.length === 0) return prev;
-        const map = new Map(snapshot.map((u) => [u.id, u]));
-        return prev.map((s) => {
-          const u = map.get(s.id);
-          if (!u) return s;
-          const players = u.status === 'running' ? (u.players ?? s.players) : u.players;
-          return { ...s, status: u.status, players, playerList: u.playerList ?? s.playerList };
-        });
-      });
-    }
-
-    function onStatusUpdate({
-      id,
-      status,
-      players,
-    }: {
-      id: string;
-      status: Server['status'];
-      players: number | null;
-    }) {
-      setServers((prev) =>
-        prev.map((s) =>
-          s.id === id
-            ? { ...s, status, players: status === 'running' ? (players ?? s.players) : players }
-            : s
-        )
-      );
-    }
-
-    // Player count/list can change without a status transition (players
-    // joining a still-running server) — see statusBus.emitPlayers.
-    function onPlayersUpdate({
-      id,
-      players,
-      playerList,
-    }: {
-      id: string;
-      players: number | null;
-      playerList: string | null;
-    }) {
-      setServers((prev) => prev.map((s) => (s.id === id ? { ...s, players, playerList } : s)));
-    }
-
-    socket.on('status:all', onStatusAll);
-    socket.on('status:update', onStatusUpdate);
-    socket.on('players:update', onPlayersUpdate);
-
-    fetchServers().then(() => {
-      // Reuses the app's one shared connection (see socket.ts) instead of
-      // opening a second transport — an already-authenticated admin landing
-      // here keeps their connection, and an anonymous visitor connects it here.
-      if (!socket.connected) socket.connect();
-      socket.emit('join:status');
-    });
-
-    const poll = setInterval(fetchServers, 10_000);
-
-    return () => {
-      socket.off('status:all', onStatusAll);
-      socket.off('status:update', onStatusUpdate);
-      socket.off('players:update', onPlayersUpdate);
-      socket.emit('leave:status');
-      clearInterval(poll);
-    };
-  }, [visitor, fetchServers]);
-
-  const loading = identifying || !serversLoaded;
+  const networkProvider = networkProviderQuery.data?.networkProvider ?? null;
+  const servers = serversQuery.data ?? [];
+  const loading = identifying || serversQuery.isLoading;
   const onlineCount = servers.filter((s) => s.status === 'running').length;
   const filtered = sortOnlineFirst(
     search ? servers.filter((s) => s.name.toLowerCase().includes(search.toLowerCase())) : servers

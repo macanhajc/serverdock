@@ -1,83 +1,21 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Check,
-  Copy,
-  ExternalLink,
-  User,
-  Refresh,
-  WarningDiamond,
-  X,
-} from 'pixelarticons/react';
+import { ExternalLink, User } from 'pixelarticons/react';
 import { CopyButton } from '../../../../components/core/CopyButton';
 import { UptimeTicker } from '../../../../components/core/UptimeTicker';
-import { copyText } from '../../../../utils/clipboard';
-import { timeAgo, formatDate } from '../../../../utils/format';
-import type { Server, ServerEventEntry } from '../../../../types';
+import { timeAgo } from '../../../../utils/format';
+import type { Server } from '../../../../types';
 import {
   gameHue,
   gameMark,
-  getResourceIssues,
-  getCrashSummary,
-  getActionFailureSummary,
   getDisplayPlayerCount,
   splitPlayerListEntries,
 } from '../../../../utils/serverStatus';
 import { BuildSection } from './BuildSection';
-
-// ─── InfoRow ──────────────────────────────────────────────────────────────────
-
-interface InfoRowProps {
-  label: string;
-  value: React.ReactNode;
-  mono?: boolean;
-  suffix?: React.ReactNode;
-  copyable?: boolean;
-}
-
-function InfoRow({ label, value, mono, suffix, copyable }: InfoRowProps) {
-  const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
-
-  function handleCopy() {
-    copyText(String(value));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }
-
-  return (
-    <div className="group flex">
-      <span className="font-mono bg-bg-1 text-[11px] text-ink-3 px-4 py-2.5 border-r border-line uppercase tracking-wider w-32 shrink-0">
-        {label}
-      </span>
-      <span
-        className={`flex-1 min-w-0 text-sm text-ink truncate px-4 py-2.5 ${mono ? 'font-mono' : ''}`}
-      >
-        {value}
-        {suffix}
-      </span>
-      {copyable && (
-        <button
-          onClick={handleCopy}
-          className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 font-mono text-[11px] text-ink-3 hover:text-ink px-2 py-0.5 border border-line bg-bg-2 cursor-pointer transition-opacity shrink-0"
-        >
-          {copied ? <Check width={10} height={10} /> : <Copy width={10} height={10} />}
-          {copied ? '' : t('common.copy')}
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ─── SectionTitle ─────────────────────────────────────────────────────────────
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="font-mono text-xs text-ink-3 tracking-widest uppercase mb-2 px-1">
-      {children}
-    </div>
-  );
-}
+import { SectionTitle } from './SectionTitle';
+import { InfoRow } from './InfoRow';
+import { UpdateCheckRow } from './UpdateCheckRow';
+import { EventHistorySection } from './EventHistorySection';
 
 function fmtWhen(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
@@ -87,206 +25,6 @@ function fmtWhen(iso: string) {
     minute: '2-digit',
   });
 }
-
-// ─── UpdateCheckRow ───────────────────────────────────────────────────────────
-
-interface UpdateCheckResult {
-  updateAvailable: boolean | null;
-  reason?: string;
-}
-
-function UpdateCheckRow({ id, token }: { id: string; token: string | null }) {
-  const { t } = useTranslation();
-  const [checking, setChecking] = useState(false);
-  const [result, setResult] = useState<UpdateCheckResult | null>(null);
-
-  async function check() {
-    setChecking(true);
-    setResult(null);
-    try {
-      const res = await fetch(`/api/games/${id}/check-update`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json().catch(() => ({}));
-      setResult(res.ok ? data : { updateAvailable: null, reason: 'check_failed' });
-    } catch {
-      setResult({ updateAvailable: null, reason: 'check_failed' });
-    } finally {
-      setChecking(false);
-    }
-  }
-
-  let label: string | null = null;
-  let color = 'var(--ink-3)';
-  let ResultIcon: typeof WarningDiamond | null = null;
-  if (result) {
-    if (result.updateAvailable === true) {
-      label = t('serverDetail.updateAvailable');
-      color = 'var(--yellow)';
-      ResultIcon = WarningDiamond;
-    } else if (result.updateAvailable === false) {
-      label = t('serverDetail.upToDate');
-      color = 'var(--green)';
-      ResultIcon = Check;
-    } else if (result.reason === 'not_pulled') {
-      label = t('serverDetail.imageNotPulled');
-      ResultIcon = X;
-    } else {
-      label = t('serverDetail.updateCheckFailed');
-      ResultIcon = X;
-    }
-  }
-
-  return (
-    <div className="flex group">
-      <span className="font-mono bg-bg-1 text-[11px] text-ink-3 px-4 py-2.5 border-r border-line uppercase tracking-wider w-32 shrink-0">
-        {t('serverDetail.imageUpdateLabel')}
-      </span>
-
-      <span className="flex-1 min-w-0 px-4 py-2.5 flex items-center gap-3">
-        {label && (
-          <span className="inline-flex items-center gap-1.5 capitalize font-mono text-xs" style={{ color }}>
-            {ResultIcon && <ResultIcon width={12} height={12} />}
-            {label}
-          </span>
-        )}
-        <button
-          onClick={check}
-          disabled={checking}
-          className="inline-flex items-center gap-1.5 font-mono text-[11px] text-ink-3 hover:text-ink px-2 py-0.5 border border-line bg-bg-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <Refresh width={11} height={11} />
-          {checking ? t('common.loading') : t('serverDetail.checkForUpdates')}
-        </button>
-      </span>
-    </div>
-  );
-}
-
-// ─── EventHistorySection ────────────────────────────────────────────────────
-
-function summarizeEvent(
-  entry: ServerEventEntry,
-  t: (key: string, opts?: Record<string, unknown>) => string
-): string {
-  if (entry.type === 'crash') {
-    return getCrashSummary({ ...entry.data, at: entry.createdAt }, t);
-  }
-  if (entry.type === 'action_failed') {
-    return getActionFailureSummary({ ...entry.data, at: entry.createdAt }, t);
-  }
-  return getResourceIssues({ ...entry.data, since: entry.createdAt })
-    .map((issue) =>
-      t(issue.kind === 'cpu' ? 'resourceAlert.cpuIssue' : 'resourceAlert.memoryIssue', {
-        pct: issue.pct.toFixed(0),
-      })
-    )
-    .join(' · ');
-}
-
-// A single history row — its own component (rather than inline in a .map())
-// so the stack-trace toggle can hold its own expand/collapse state per row.
-function EventRow({
-  entry,
-  t,
-}: {
-  entry: ServerEventEntry;
-  t: (key: string, opts?: Record<string, unknown>) => string;
-}) {
-  const [showStack, setShowStack] = useState(false);
-  const color = entry.type === 'resource_high' ? 'var(--yellow)' : 'var(--red)';
-  const stack = entry.type === 'action_failed' ? entry.data.stack : null;
-
-  return (
-    <div className="flex flex-col">
-      <div className="flex items-center gap-3 px-4 py-2.5">
-        <WarningDiamond width={12} height={12} style={{ color }} className="shrink-0" />
-        <span className="flex-1 min-w-0 font-mono text-xs text-ink truncate">
-          {summarizeEvent(entry, t)}
-        </span>
-        {!entry.resolvedAt && (
-          <span
-            className="font-mono text-[10px] uppercase tracking-wider px-1.5 py-0.5 shrink-0"
-            style={{ color, background: `color-mix(in oklab, ${color} 12%, transparent)` }}
-          >
-            {t('serverDetail.eventOngoing')}
-          </span>
-        )}
-        {stack && (
-          <button
-            type="button"
-            onClick={() => setShowStack((v) => !v)}
-            className="font-mono text-[10px] text-ink-3 hover:text-ink px-1.5 py-0.5 border border-line bg-bg-2 cursor-pointer shrink-0"
-          >
-            {showStack ? t('serverDetail.eventHideStack') : t('serverDetail.eventShowStack')}
-          </button>
-        )}
-        <span
-          className="font-mono text-[11px] w-20 text-ink-3 shrink-0"
-          title={formatDate(entry.createdAt)}
-        >
-          {timeAgo(entry.createdAt, t)}
-        </span>
-      </div>
-      {stack && showStack && (
-        <pre className="mx-4 mb-3 p-3 bg-bg-2 border border-line font-mono text-[10px] text-ink-2 overflow-x-auto whitespace-pre-wrap break-words">
-          {stack}
-        </pre>
-      )}
-    </div>
-  );
-}
-
-// Bounded, append-only history of past resource/crash alerts for this game
-// (see backend/src/lib/eventLog.js) — separate from the live banners above,
-// which only reflect the *current* unresolved condition. Fetched on demand
-// rather than pushed over the socket since it's a diagnostic tail, not
-// something that needs to update live while the tab is open.
-function EventHistorySection({ id, token }: { id: string; token: string | null }) {
-  const { t } = useTranslation();
-  const [events, setEvents] = useState<ServerEventEntry[] | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/servers/${id}/events`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data: ServerEventEntry[]) => {
-        if (!cancelled) setEvents(data);
-      })
-      .catch(() => {
-        if (!cancelled) setEvents([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [id, token]);
-
-  return (
-    <section className="border-t border-line pt-6 pb-6">
-      <SectionTitle>{t('serverDetail.infoEventHistory')}</SectionTitle>
-      {!events ? (
-        <div className="border border-line px-4 py-3 font-mono text-xs text-ink-3">
-          {t('common.loading')}
-        </div>
-      ) : events.length === 0 ? (
-        <div className="border border-line px-4 py-3 font-mono text-xs text-ink-3">
-          {t('serverDetail.eventHistoryEmpty')}
-        </div>
-      ) : (
-        <div className="border border-line divide-y divide-line">
-          {events.map((e) => (
-            <EventRow key={e.id} entry={e} t={t} />
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-// ─── InfoTab ──────────────────────────────────────────────────────────────────
 
 interface InfoTabProps {
   server: Server;
@@ -331,7 +69,6 @@ export function InfoTab({ server, id, token }: InfoTabProps) {
   return (
     <div className="h-full overflow-y-auto p-6 container">
       <div className="flex flex-col gap-8">
-
         <div className="w-full h-96 shrink-0 border border-line overflow-hidden grid place-items-center">
           {server.avatarUrl ? (
             <img src={server.avatarUrl} alt="" className="w-full h-full object-cover" />
@@ -358,7 +95,7 @@ export function InfoTab({ server, id, token }: InfoTabProps) {
         )}
 
         {server.storeUrl && (
-          <section className='-mt-2'>
+          <section className="-mt-2">
             <SectionTitle>{t('gameForm.fieldStoreUrl')}</SectionTitle>
             <div className="border border-line bg-bg-1 px-4 py-3">
               <a
@@ -415,7 +152,9 @@ export function InfoTab({ server, id, token }: InfoTabProps) {
                     <span className="font-mono text-xl font-bold text-ink leading-tight">
                       {timeAgo(lastActiveAt, t)}
                     </span>
-                    <span className="font-mono text-xs text-ink-3 mt-1">{fmtWhen(lastActiveAt)}</span>
+                    <span className="font-mono text-xs text-ink-3 mt-1">
+                      {fmtWhen(lastActiveAt)}
+                    </span>
                   </>
                 ) : (
                   <span className="font-mono text-xl font-bold text-ink leading-tight">—</span>
@@ -426,7 +165,7 @@ export function InfoTab({ server, id, token }: InfoTabProps) {
         )}
 
         {/* Players */}
-        <section className='border-t border-line pt-6'>
+        <section className="border-t border-line pt-6">
           <SectionTitle>{t('serverDetail.infoPlayers')}</SectionTitle>
           <div className="border border-line px-5 py-4 flex items-center gap-3">
             <span className="font-mono text-2xl font-bold text-ink">
@@ -446,9 +185,7 @@ export function InfoTab({ server, id, token }: InfoTabProps) {
                     className="flex py-2 gap-2 px-2 items-center text-ink-2 hover:text-ink bg-bg-1 border border-line hover:border-line-2"
                   >
                     <User width={12} height={12} />
-                    <span className="font-mono text-xs">
-                      {entry}
-                    </span>
+                    <span className="font-mono text-xs">{entry}</span>
                   </div>
                 ))}
               </div>
@@ -607,7 +344,6 @@ export function InfoTab({ server, id, token }: InfoTabProps) {
         )}
 
         <EventHistorySection id={id} token={token} />
-
       </div>
     </div>
   );

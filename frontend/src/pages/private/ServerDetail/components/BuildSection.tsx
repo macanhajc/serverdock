@@ -1,10 +1,11 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Tools } from 'pixelarticons/react';
 import { Button } from '../../../../components/core/Button';
 import { StatusBadge } from '../../../../components/core/StatusBadge';
 import { BuildLine } from '../../GameForm/components/BuildLine';
 import { useBuildLog } from '../../../../hooks/useBuildLog';
+import { useTriggerBuild } from '../hooks/useTriggerBuild';
+import { SectionTitle } from './SectionTitle';
 
 interface BuildSectionProps {
   id: string;
@@ -19,29 +20,7 @@ interface BuildSectionProps {
 export function BuildSection({ id, token, imageBuilt }: BuildSectionProps) {
   const { t } = useTranslation();
   const { status, log, startBuild } = useBuildLog(id);
-  const [starting, setStarting] = useState(false);
-  const [error, setError] = useState('');
-
-  async function triggerBuild() {
-    setStarting(true);
-    setError('');
-    try {
-      const res = await fetch(`/api/games/${id}/build`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(data.error ?? t('serverDetail.buildStartFailed'));
-        return;
-      }
-      startBuild();
-    } catch {
-      setError(t('serverDetail.buildStartFailed'));
-    } finally {
-      setStarting(false);
-    }
-  }
+  const triggerBuild = useTriggerBuild(id, token);
 
   const building = status === 'building';
   // Once a build finishes in this session, trust that result over the page's
@@ -50,9 +29,7 @@ export function BuildSection({ id, token, imageBuilt }: BuildSectionProps) {
 
   return (
     <section className="border-t border-line pt-6">
-      <div className="font-mono text-xs text-ink-3 tracking-widest uppercase mb-2 px-1">
-        {t('serverDetail.buildSectionTitle')}
-      </div>
+      <SectionTitle>{t('serverDetail.buildSectionTitle')}</SectionTitle>
       <div className="border border-line px-5 py-4 flex items-center gap-3">
         <StatusBadge status={building ? 'building' : built ? 'built' : 'none'} />
         <span className="font-mono text-xs text-ink-3">
@@ -66,8 +43,8 @@ export function BuildSection({ id, token, imageBuilt }: BuildSectionProps) {
           size="sm"
           variant="ghost"
           className="ml-auto"
-          disabled={building || starting}
-          onClick={triggerBuild}
+          disabled={building || triggerBuild.isPending}
+          onClick={() => triggerBuild.mutate(undefined, { onSuccess: startBuild })}
         >
           <Tools width={12} height={12} className="mr-1.5" />
           {building
@@ -78,7 +55,9 @@ export function BuildSection({ id, token, imageBuilt }: BuildSectionProps) {
         </Button>
       </div>
 
-      {error && <div className="font-mono text-xs text-red mt-2">{error}</div>}
+      {triggerBuild.isError && (
+        <div className="font-mono text-xs text-red mt-2">{triggerBuild.error.message}</div>
+      )}
 
       {(building || log.length > 0) && (
         <div className="mt-3 border border-line bg-bg-terminal px-3 py-3 max-h-48 overflow-y-auto font-mono text-sm leading-6">

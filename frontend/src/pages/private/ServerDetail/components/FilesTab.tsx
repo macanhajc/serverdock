@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef, Fragment } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useEffect, Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import CodeMirror, { keymap, type Extension } from '@uiw/react-codemirror';
 import { json } from '@codemirror/lang-json';
@@ -7,26 +6,30 @@ import { yaml } from '@codemirror/lang-yaml';
 import { StreamLanguage } from '@codemirror/language';
 import { properties } from '@codemirror/legacy-modes/mode/properties';
 import {
-  Download,
   DragAndDrop,
   File as FileIcon,
   Folder,
   FolderPlus,
   Home,
-  MoreVertical,
-  Pencil,
   Plus,
   Refresh,
   Save,
-  Trash,
   Undo,
 } from 'pixelarticons/react';
 import { useToast } from '../../../../context/ToastContext';
 import { Button } from '../../../../components/core/Button';
 import { ConfirmModal } from '../../../../components/core/ConfirmModal';
-import { formatSize } from '../../../../utils/format';
 import { filesEditorTheme } from '../../../../utils/codeMirrorTheme';
 import type { FileEntry, OpenFile } from '../../../../types';
+import { FileItem } from './FileItem';
+import { useDirectoryListing } from '../hooks/useDirectoryListing';
+import { useFileContent } from '../hooks/useFileContent';
+import { useSaveFile } from '../hooks/useSaveFile';
+import { useUploadFiles } from '../hooks/useUploadFiles';
+import { useRenameEntry } from '../hooks/useRenameEntry';
+import { useRemoveEntry } from '../hooks/useRemoveEntry';
+import { useCreateDirectory } from '../hooks/useCreateDirectory';
+import { useDownloadFile } from '../hooks/useDownloadFile';
 
 // Highlighting for the file types people actually edit here; anything else
 // still gets CodeMirror's line numbers/search/folding, just no coloring.
@@ -48,176 +51,6 @@ function languageExtension(filename: string): Extension[] {
   }
 }
 
-// ─── FileItem ─────────────────────────────────────────────────────────────────
-
-interface FileItemProps {
-  name: string;
-  type: 'file' | 'directory';
-  size?: number;
-  modified?: string | null;
-  active?: boolean;
-  onClick: () => void;
-  onRename?: (name: string) => void;
-  onRemove?: () => void;
-  onDownload?: () => void;
-}
-
-function FileItem({
-  name,
-  type,
-  size,
-  modified,
-  active,
-  onClick,
-  onRename,
-  onRemove,
-  onDownload,
-}: FileItemProps) {
-  const { t } = useTranslation();
-  const isDir = type === 'directory';
-  const hasMenu = !!onRename || !!onRemove || !!onDownload;
-
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
-  const [renaming, setRenaming] = useState(false);
-  const [draft, setDraft] = useState(name);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    function onMouseDown(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    }
-    document.addEventListener('mousedown', onMouseDown);
-    return () => document.removeEventListener('mousedown', onMouseDown);
-  }, [menuOpen]);
-
-  function openMenu(e: React.MouseEvent<HTMLButtonElement>) {
-    e.stopPropagation();
-    const rect = e.currentTarget.getBoundingClientRect();
-    setMenuPos({ top: rect.bottom + 2, right: window.innerWidth - rect.right });
-    setMenuOpen(true);
-  }
-
-  function startRename() {
-    setMenuOpen(false);
-    setDraft(name);
-    setRenaming(true);
-  }
-
-  function commitRename() {
-    const trimmed = draft.trim();
-    if (trimmed && trimmed !== name) onRename?.(trimmed);
-    setRenaming(false);
-  }
-
-  function handleRenameKey(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      commitRename();
-    }
-    if (e.key === 'Escape') setRenaming(false);
-  }
-
-  return (
-    <>
-      <div
-        onClick={renaming ? undefined : onClick}
-        title={modified ? new Date(modified).toLocaleString() : undefined}
-        className={`group flex items-center gap-2.5 px-2.5 py-2 font-mono text-[12.5px] border ${
-          renaming ? 'cursor-default' : 'cursor-pointer'
-        } ${
-          active
-            ? 'bg-bg-2 text-ink border-line [box-shadow:inset_2px_0_0_var(--accent)]'
-            : 'text-ink-2 border-transparent hover:bg-bg-2 hover:text-ink'
-        }`}
-      >
-        {isDir ? (
-          <Folder width={13} height={13} className="flex-none text-[#caa45a] opacity-90" />
-        ) : (
-          <FileIcon width={13} height={13} className="flex-none text-ink-3" />
-        )}
-        {renaming ? (
-          <input
-            autoFocus
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={commitRename}
-            onKeyDown={handleRenameKey}
-            onClick={(e) => e.stopPropagation()}
-            className="flex-1 min-w-0 bg-transparent border-b font-mono text-[12.5px] text-ink outline-none"
-            style={{ borderColor: 'var(--accent-edge)' }}
-          />
-        ) : (
-          <span className="flex-1 min-w-0 truncate">
-            {name}
-            {isDir && name !== '..' ? '/' : ''}
-          </span>
-        )}
-        {!renaming && size != null && (
-          <span className="text-sm text-ink-3 flex-none">{formatSize(size)}</span>
-        )}
-        {hasMenu && !renaming && (
-          <button
-            onClick={openMenu}
-            className={`flex-none px-1 leading-none cursor-pointer text-ink-3 hover:text-ink transition-opacity ${
-              menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-            }`}
-          >
-            <MoreVertical width={13} height={13} />
-          </button>
-        )}
-      </div>
-
-      {menuOpen &&
-        createPortal(
-          <div
-            ref={menuRef}
-            style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999 }}
-            className="bg-bg-2 border border-line-2 py-0.5 min-w-32.5"
-          >
-            {onRename && (
-              <button
-                className="w-full flex items-center gap-2 text-left px-3 py-2 font-mono text-xs text-ink-2 hover:bg-bg-3 hover:text-ink cursor-pointer"
-                onClick={startRename}
-              >
-                <Pencil width={12} height={12} />
-                {t('serverDetail.rename')}
-              </button>
-            )}
-            {onDownload && (
-              <button
-                className="w-full flex items-center gap-2 text-left px-3 py-2 font-mono text-xs text-ink-2 hover:bg-bg-3 hover:text-ink cursor-pointer"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onDownload();
-                }}
-              >
-                <Download width={12} height={12} />
-                {t('serverDetail.filesDownload')}
-              </button>
-            )}
-            {onRemove && (
-              <button
-                className="w-full flex items-center gap-2 text-left px-3 py-2 font-mono text-xs text-red hover:bg-bg-3 cursor-pointer"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onRemove();
-                }}
-              >
-                <Trash width={12} height={12} />
-                {t('serverDetail.remove')}
-              </button>
-            )}
-          </div>,
-          document.body
-        )}
-    </>
-  );
-}
-
-// ─── FilesTab ─────────────────────────────────────────────────────────────────
-
 interface FilesTabProps {
   id: string;
   token: string | null;
@@ -236,59 +69,56 @@ export function FilesTab({ id, token, editable, canWrite }: FilesTabProps) {
   const writable = editable && canWrite;
 
   const [currentPath, setCurrentPath] = useState('/');
-  const [entries, setEntries] = useState<FileEntry[]>([]);
-  const [listError, setListError] = useState(false);
-  const [dirVersion, setDirVersion] = useState(0);
   const [openFile, setOpenFile] = useState<OpenFile | null>(null);
   const [fileContent, setFileContent] = useState('');
   const [savedContent, setSavedContent] = useState('');
-  const [fileSaving, setFileSaving] = useState(false);
   const [fileError, setFileError] = useState('');
   const [dragCount, setDragCount] = useState(0);
-  const [uploading, setUploading] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<FileEntry | null>(null);
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
   const [creating, setCreating] = useState<'file' | 'directory' | null>(null);
   const [createName, setCreateName] = useState('');
 
-  useEffect(() => {
-    fetch(`/api/files/${id}?path=${encodeURIComponent(currentPath)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data: { entries: FileEntry[] }) => {
-        setEntries(data.entries);
-        setListError(false);
-      })
-      .catch(() => {
-        setEntries([]);
-        setListError(true);
-      });
-  }, [id, currentPath, token, dirVersion]);
+  const listingQuery = useDirectoryListing(id, token, currentPath);
+  const entries = listingQuery.data ?? [];
+  const listError = listingQuery.isError;
 
+  const fileContentQuery = useFileContent(id, token, openFile?.path);
+  const saveFileMutation = useSaveFile(id, token);
+  const uploadFilesMutation = useUploadFiles(id, token);
+  const renameEntryMutation = useRenameEntry(id, token);
+  const removeEntryMutation = useRemoveEntry(id, token);
+  const createDirectoryMutation = useCreateDirectory(id, token);
+  const downloadFileMutation = useDownloadFile(id, token);
+
+  // Clear immediately on file change (avoids flashing the previous file's
+  // content while the new one is still loading), then populate once the
+  // query for the new path resolves.
   useEffect(() => {
-    if (!openFile) return;
-    setFileError('');
     setFileContent('');
     setSavedContent('');
-    fetch(`/api/files/${id}/read?path=${encodeURIComponent(openFile.path)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) =>
-        r.ok
-          ? r.json()
-          : r.json().then((e: { error?: string }) => Promise.reject(e.error ?? 'Read failed'))
-      )
-      .then((data: { content: string }) => {
-        setFileContent(data.content);
-        setSavedContent(data.content);
-      })
-      .catch((msg: unknown) => setFileError(String(msg)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openFile?.path, id, token]);
+    setFileError('');
+  }, [openFile?.path]);
+
+  useEffect(() => {
+    if (fileContentQuery.data !== undefined) {
+      setFileContent(fileContentQuery.data);
+      setSavedContent(fileContentQuery.data);
+    }
+  }, [fileContentQuery.data]);
+
+  useEffect(() => {
+    if (fileContentQuery.isError) {
+      setFileError(
+        fileContentQuery.error instanceof Error ? fileContentQuery.error.message : 'Read failed'
+      );
+    }
+  }, [fileContentQuery.isError, fileContentQuery.error]);
 
   const fileLines = fileContent ? fileContent.split('\n') : [''];
   const fileDirty = fileContent !== savedContent;
+  const fileSaving = saveFileMutation.isPending;
+  const uploading = uploadFilesMutation.isPending;
 
   // Route navigation through here — unsaved editor changes need an explicit discard
   function guardNav(go: () => void) {
@@ -299,28 +129,19 @@ export function FilesTab({ id, token, editable, canWrite }: FilesTabProps) {
     }
   }
 
-  async function saveFile() {
+  function saveFile() {
     if (!openFile || fileSaving || !writable) return;
-    setFileSaving(true);
     setFileError('');
-    try {
-      const res = await fetch(`/api/files/${id}/write`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: openFile.path, content: fileContent }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setFileError(data.error ?? 'Save failed');
-        return;
+    saveFileMutation.mutate(
+      { path: openFile.path, content: fileContent },
+      {
+        onSuccess: () => {
+          setSavedContent(fileContent);
+          addToast('File saved');
+        },
+        onError: (err) => setFileError(err instanceof Error ? err.message : 'Save failed'),
       }
-      setSavedContent(fileContent);
-      addToast('File saved');
-    } catch {
-      setFileError('Save failed');
-    } finally {
-      setFileSaving(false);
-    }
+    );
   }
 
   const saveKeymap = keymap.of([
@@ -333,30 +154,18 @@ export function FilesTab({ id, token, editable, canWrite }: FilesTabProps) {
     },
   ]);
 
-  async function uploadFiles(fileList: File[]) {
+  function uploadFiles(fileList: File[]) {
     if (!fileList.length || !writable) return;
-    setUploading(true);
-    const form = new FormData();
-    for (const f of fileList) form.append('files', f);
-    try {
-      const res = await fetch(`/api/files/${id}/upload?path=${encodeURIComponent(currentPath)}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
-      });
-      if (res.ok) {
-        const data = await res.json();
-        addToast(t('serverDetail.uploadDone', { count: data.uploaded.length }));
-        setDirVersion((v) => v + 1);
-      } else {
-        const data = await res.json().catch(() => ({}));
-        addToast(data.error ?? t('serverDetail.uploadFailed'));
+    uploadFilesMutation.mutate(
+      { path: currentPath, files: fileList },
+      {
+        onSuccess: (uploaded) => addToast(t('serverDetail.uploadDone', { count: uploaded.length })),
+        onError: (err) =>
+          addToast(
+            err instanceof Error && err.message ? err.message : t('serverDetail.uploadFailed')
+          ),
       }
-    } catch {
-      addToast(t('serverDetail.uploadFailed'));
-    } finally {
-      setUploading(false);
-    }
+    );
   }
 
   function onDragEnter(e: React.DragEvent) {
@@ -410,69 +219,44 @@ export function FilesTab({ id, token, editable, canWrite }: FilesTabProps) {
     return currentPath === '/' ? `/${name}` : `${currentPath}/${name}`;
   }
 
-  async function renameEntry(entry: FileEntry, newName: string) {
+  function renameEntry(entry: FileEntry, newName: string) {
     const path = entryPath(entry.name);
-    try {
-      const res = await fetch(`/api/files/${id}/rename`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, newName }),
-      });
-      if (res.ok) {
-        if (openFile?.path === path) setOpenFile({ path: entryPath(newName), name: newName });
-        setDirVersion((v) => v + 1);
-      } else {
-        const data = await res.json().catch(() => ({}));
-        addToast(data.error ?? t('serverDetail.renameFailed'));
+    renameEntryMutation.mutate(
+      { path, newName },
+      {
+        onSuccess: () => {
+          if (openFile?.path === path) setOpenFile({ path: entryPath(newName), name: newName });
+        },
+        onError: (err) =>
+          addToast(
+            err instanceof Error && err.message ? err.message : t('serverDetail.renameFailed')
+          ),
       }
-    } catch {
-      addToast(t('serverDetail.renameFailed'));
-    }
+    );
   }
 
-  async function removeEntry(entry: FileEntry) {
+  function removeEntry(entry: FileEntry) {
     const path = entryPath(entry.name);
-    try {
-      const res = await fetch(`/api/files/${id}/delete`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path }),
-      });
-      if (res.ok) {
+    removeEntryMutation.mutate(path, {
+      onSuccess: () => {
         if (openFile?.path === path || openFile?.path.startsWith(path + '/')) setOpenFile(null);
-        setDirVersion((v) => v + 1);
-      } else {
-        const data = await res.json().catch(() => ({}));
-        addToast(data.error ?? t('serverDetail.removeFailed'));
-      }
-    } catch {
-      addToast(t('serverDetail.removeFailed'));
-    }
+      },
+      onError: (err) =>
+        addToast(
+          err instanceof Error && err.message ? err.message : t('serverDetail.removeFailed')
+        ),
+    });
   }
 
-  async function downloadEntry(entry: FileEntry) {
+  function downloadEntry(entry: FileEntry) {
     const path = entryPath(entry.name);
-    try {
-      const res = await fetch(`/api/files/${id}/download?path=${encodeURIComponent(path)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        addToast(t('serverDetail.filesDownloadFailed'));
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = entry.name;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      addToast(t('serverDetail.filesDownloadFailed'));
-    }
+    downloadFileMutation.mutate(
+      { path, filename: entry.name },
+      { onError: () => addToast(t('serverDetail.filesDownloadFailed')) }
+    );
   }
 
-  async function commitCreate() {
+  function commitCreate() {
     const name = createName.trim();
     const kind = creating;
     setCreating(null);
@@ -483,28 +267,26 @@ export function FilesTab({ id, token, editable, canWrite }: FilesTabProps) {
       return;
     }
     const path = entryPath(name);
-    try {
-      const res =
-        kind === 'directory'
-          ? await fetch(`/api/files/${id}/mkdir`, {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ path }),
-            })
-          : await fetch(`/api/files/${id}/write`, {
-              method: 'PUT',
-              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ path, content: '' }),
-            });
-      if (res.ok) {
-        setDirVersion((v) => v + 1);
-        if (kind === 'file') setOpenFile({ path, name });
-      } else {
-        const data = await res.json().catch(() => ({}));
-        addToast(data.error ?? t('serverDetail.filesCreateFailed'));
-      }
-    } catch {
-      addToast(t('serverDetail.filesCreateFailed'));
+    if (kind === 'directory') {
+      createDirectoryMutation.mutate(path, {
+        onError: (err) =>
+          addToast(
+            err instanceof Error && err.message ? err.message : t('serverDetail.filesCreateFailed')
+          ),
+      });
+    } else {
+      saveFileMutation.mutate(
+        { path, content: '' },
+        {
+          onSuccess: () => setOpenFile({ path, name }),
+          onError: (err) =>
+            addToast(
+              err instanceof Error && err.message
+                ? err.message
+                : t('serverDetail.filesCreateFailed')
+            ),
+        }
+      );
     }
   }
 
@@ -661,7 +443,7 @@ export function FilesTab({ id, token, editable, canWrite }: FilesTabProps) {
               <span className="font-mono text-sm text-red">
                 {t('serverDetail.filesLoadFailed')}
               </span>
-              <Button size="sm" variant="ghost" onClick={() => setDirVersion((v) => v + 1)}>
+              <Button size="sm" variant="ghost" onClick={() => listingQuery.refetch()}>
                 <Refresh width={12} height={12} className="mr-1.5" />
                 {t('common.retry')}
               </Button>

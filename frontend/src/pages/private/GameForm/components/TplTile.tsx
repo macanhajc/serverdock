@@ -28,11 +28,7 @@ export function TplTile({ tpl, active, onClick }: TplTileProps) {
             : {}
         }
       >
-        {tpl.id === 'blank' ? (
-          <Plus width={16} height={16} />
-        ) : (
-          tpl.name.slice(0, 2).toUpperCase()
-        )}
+        {tpl.id === 'blank' ? <Plus width={16} height={16} /> : tpl.name.slice(0, 2).toUpperCase()}
       </div>
       <span className="font-mono text-sm text-ink-2 text-center leading-tight tracking-[.04em]">
         {tpl.name}

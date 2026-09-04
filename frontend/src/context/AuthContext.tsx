@@ -1,5 +1,8 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import socket from '../socket';
+import { useMe } from './hooks/useMe';
+import { authKeys } from './hooks/queryKeys';
 import type { AdminRole, Permission } from '../types';
 
 const SESSION_KEY = 'sd_token';
@@ -22,33 +25,22 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => sessionStorage.getItem(SESSION_KEY));
   const [socketConnected, setSocketConnected] = useState(socket.connected);
-  const [username, setUsername] = useState<string | null>(null);
-  const [role, setRole] = useState<AdminRole | null>(null);
+  const queryClient = useQueryClient();
+
   // null permissions + role 'super_admin' means "all"; null + no role means "unknown yet"
-  const [permissions, setPermissions] = useState<Permission[] | null>(null);
+  const meQuery = useMe(token);
+  const username = meQuery.data?.username ?? null;
+  const role: AdminRole | null = meQuery.data?.role ?? null;
+  const permissions: Permission[] | null = meQuery.data?.permissions ?? null;
 
-  const fetchMe = useCallback((jwt: string) => {
-    fetch('/api/auth/me', { headers: { Authorization: `Bearer ${jwt}` } })
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data: { username: string; role: AdminRole; permissions: Permission[] | null }) => {
-        setUsername(data.username);
-        setRole(data.role);
-        setPermissions(data.permissions);
-      })
-      .catch(() => {});
-  }, []);
-
-  // Reconnect socket once on mount if a stored token exists, and load who-am-I
+  // Reconnect socket once on mount if a stored token exists — who-am-I is
+  // fetched by useMe itself, which fires as soon as `enabled: !!token` is true.
   useEffect(() => {
     const stored = sessionStorage.getItem(SESSION_KEY);
-    if (stored) {
-      if (!socket.connected) {
-        socket.auth = { token: stored };
-        socket.connect();
-      }
-      fetchMe(stored);
+    if (stored && !socket.connected) {
+      socket.auth = { token: stored };
+      socket.connect();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Track socket connectivity for E2 disconnect indicator
@@ -82,7 +74,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // actually carries the new auth.
     if (socket.connected) socket.disconnect();
     socket.connect();
-    fetchMe(jwt);
   }
 
   function logout() {
@@ -95,9 +86,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     sessionStorage.removeItem(SESSION_KEY);
     setToken(null);
-    setUsername(null);
-    setRole(null);
-    setPermissions(null);
+    // Cleared explicitly rather than left to `enabled: false` — a disabled
+    // query keeps its last data, which would otherwise flash the previous
+    // admin's stale role/permissions if someone else logs in on this tab.
+    queryClient.removeQueries({ queryKey: authKeys.me });
     socket.disconnect();
     socket.auth = {};
   }

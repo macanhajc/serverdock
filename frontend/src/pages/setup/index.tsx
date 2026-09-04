@@ -6,11 +6,13 @@ import { TextField } from '../../components/forms/TextField';
 import { Button } from '../../components/core/Button';
 import { LangSwitcher } from '../../components/core/LangSwitcher';
 import { networkProviders } from '../../data/networkProviders';
+import { useSetupAccount } from './hooks/useSetupAccount';
+import { useSaveNetworkProvider } from './hooks/useSaveNetworkProvider';
 import type { NetworkProviderId } from '../../types';
 
 export default function Setup({ onSetupComplete }: { onSetupComplete: () => void }) {
   const { t } = useTranslation();
-  const { login, token } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
 
   const [step, setStep] = useState<'account' | 'network'>('account');
@@ -19,10 +21,13 @@ export default function Setup({ onSetupComplete }: { onSetupComplete: () => void
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
 
   const [networkChoice, setNetworkChoice] = useState<NetworkProviderId>('netbird');
-  const [networkSaving, setNetworkSaving] = useState(false);
+
+  const setupAccount = useSetupAccount();
+  const saveNetworkProvider = useSaveNetworkProvider();
+  const loading = setupAccount.isPending;
+  const networkSaving = saveNetworkProvider.isPending;
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -31,31 +36,24 @@ export default function Setup({ onSetupComplete }: { onSetupComplete: () => void
       return;
     }
     setError('');
-    setLoading(true);
-    try {
-      const res = await fetch('/api/auth/setup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
-      const data = await res.json();
-      if (res.status === 409) {
+    const result = await setupAccount.mutateAsync({ username, password });
+    switch (result.kind) {
+      case 'alreadySetup':
         navigate('/auth', { replace: true });
-        return;
-      }
-      if (!res.ok) {
-        setError(data.error ?? t('login.invalidCredentials'));
-        return;
-      }
-      // Log in but don't finish yet — the network step below still needs to
-      // run before onSetupComplete() flips needsSetup, which would otherwise
-      // yank this component straight to /auth mid-wizard (see SetupGate).
-      login(data.token);
-      setStep('network');
-    } catch {
-      setError(t('login.couldNotReach'));
-    } finally {
-      setLoading(false);
+        break;
+      case 'error':
+        setError(result.error ?? t('login.invalidCredentials'));
+        break;
+      case 'networkError':
+        setError(t('login.couldNotReach'));
+        break;
+      case 'ok':
+        // Log in but don't finish yet — the network step below still needs to
+        // run before onSetupComplete() flips needsSetup, which would otherwise
+        // yank this component straight to /auth mid-wizard (see SetupGate).
+        login(result.token);
+        setStep('network');
+        break;
     }
   }
 
@@ -64,20 +62,8 @@ export default function Setup({ onSetupComplete }: { onSetupComplete: () => void
     navigate('/admin', { replace: true });
   }
 
-  async function handleNetworkContinue() {
-    setNetworkSaving(true);
-    try {
-      await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ networkProvider: networkChoice }),
-      });
-    } catch {
-      // Best-effort — worst case they adjust it later in Settings.
-    } finally {
-      setNetworkSaving(false);
-      finishSetup();
-    }
+  function handleNetworkContinue() {
+    saveNetworkProvider.mutate(networkChoice, { onSettled: finishSetup });
   }
 
   return (
@@ -168,7 +154,9 @@ export default function Setup({ onSetupComplete }: { onSetupComplete: () => void
             {step === 'network' && (
               <>
                 <h2 className="m-0 mb-1 text-lg font-bold">{t('setup.networkTitle')}</h2>
-                <p className="m-0 mb-6 text-xs text-ink-3 font-mono">{t('setup.networkSubtitle')}</p>
+                <p className="m-0 mb-6 text-xs text-ink-3 font-mono">
+                  {t('setup.networkSubtitle')}
+                </p>
 
                 <div className="flex flex-col gap-2 mb-6">
                   {networkProviders.map((p) => {

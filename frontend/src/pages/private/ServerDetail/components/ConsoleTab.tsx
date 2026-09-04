@@ -1,20 +1,14 @@
 import { useState, useEffect, useMemo, useRef, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
-import {
-  Check,
-  ChevronDown,
-  ChevronUp,
-  Copy,
-  Send as SendIcon,
-  Trash,
-} from 'pixelarticons/react';
+import { Check, ChevronDown, ChevronUp, Copy, Send as SendIcon, Trash } from 'pixelarticons/react';
 import socket from '../../../../socket';
 import { Button } from '../../../../components/core/Button';
 import { Toggle } from '../../../../components/core/Toggle';
 import { LogLine as LogLineComp } from '../../../../components/data/LogLine';
 import { SegmentedControl } from '../../../../components/forms/SegmentedControl';
 import type { Server, LogLine, RconEntry } from '../../../../types';
+import { useRconCommand } from '../hooks/useRconCommand';
 
 function nowTs(): string {
   return new Date().toTimeString().slice(0, 8);
@@ -93,6 +87,7 @@ export function ConsoleTab({
   const [rconHistoryIdx, setRconHistoryIdx] = useState(-1);
   const rconTermRef = useRef<HTMLDivElement>(null);
   const rconSeqRef = useRef<number>(0);
+  const rconCommand = useRconCommand(id, token);
 
   // Quick action — broadcast template configured per-game (rcon.commands.broadcast)
   const [broadcastInput, setBroadcastInput] = useState('');
@@ -210,25 +205,11 @@ export function ConsoleTab({
     setRconSending(true);
 
     try {
-      const res = await fetch(`/api/servers/${id}/rcon`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: cmd }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        setRconHistory((prev) =>
-          prev.map((e) => (e.seq === seq ? { ...e, response: data.response } : e))
-        );
-      } else {
-        setRconHistory((prev) =>
-          prev.map((e) => (e.seq === seq ? { ...e, error: data.error ?? 'Command failed' } : e))
-        );
-      }
-    } catch {
-      setRconHistory((prev) =>
-        prev.map((e) => (e.seq === seq ? { ...e, error: 'Could not reach server' } : e))
-      );
+      const response = await rconCommand.mutateAsync(cmd);
+      setRconHistory((prev) => prev.map((e) => (e.seq === seq ? { ...e, response } : e)));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not reach server';
+      setRconHistory((prev) => prev.map((e) => (e.seq === seq ? { ...e, error: message } : e)));
     } finally {
       setRconSending(false);
     }

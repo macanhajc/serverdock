@@ -138,17 +138,27 @@ export function getActiveIssues(
   return issues;
 }
 
+// A single-entry response that reads as an empty-roster status line (e.g.
+// HumanitZ's listCommand replies "No players connected", vanilla/Paper
+// Minecraft's "list" replies "There are 0 of a max of 20 players online:")
+// rather than an actual player. Recognized by the standard phrasing server
+// software uses to say "nobody's online" — not by parsing names, so a real
+// single connected player never matches this.
+function isEmptyRosterMessage(entry: string): boolean {
+  return /\bno\s+players?\b/i.test(entry) || /\b0\s+(?:players?|of\b)/i.test(entry);
+}
+
 // Best-effort split of a game's raw RCON player-list text into individual
 // entries — output format varies per title (and per listCommand the admin
 // configures), so this can't parse out structured id/name fields, just break
 // the blob into rows the admin can scan and click-to-copy.
 export function splitPlayerListEntries(raw: string): string[] {
   const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  if (lines.length > 1) return lines;
-  return raw
-    .split(',')
-    .map((l) => l.trim())
-    .filter(Boolean);
+  const entries = lines.length > 1
+    ? lines
+    : raw.split(',').map((l) => l.trim()).filter(Boolean);
+  if (entries.length === 1 && isEmptyRosterMessage(entries[0])) return [];
+  return entries;
 }
 
 // The A2S count is the primary source, but some titles (e.g. HumanitZ) never

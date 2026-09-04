@@ -21,6 +21,7 @@ import { SegmentedControl } from '../../../components/forms/SegmentedControl';
 import { ConfirmModal } from '../../../components/core/ConfirmModal';
 import { PageHeader } from '../../../components/core/PageHeader';
 import { SettingsPageSkeleton } from './components/SettingsPageSkeleton';
+import { SettingsCard } from './components/SettingsCard';
 import { networkProviders } from '../../../data/networkProviders';
 import type { NetworkProviderId } from '../../../types';
 
@@ -57,6 +58,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [wiping, setWiping] = useState(false);
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
   const [saved, setSaved] = useState<SavedSettings>({
     serverHost: '',
     networkProvider: 'netbird',
@@ -111,13 +113,24 @@ export default function SettingsPage() {
     );
   }, []);
 
-  const dirty =
+  const notificationsDirty = discordWebhookUrl !== saved.discordWebhookUrl;
+  const identityDirty =
     serverHost !== saved.serverHost ||
     networkProvider !== saved.networkProvider ||
-    wireguardInterface !== saved.wireguardInterface ||
-    registrationOpen !== saved.registrationOpen ||
-    dataRoot !== saved.dataRoot ||
-    discordWebhookUrl !== saved.discordWebhookUrl;
+    wireguardInterface !== saved.wireguardInterface;
+  const registrationDirty = registrationOpen !== saved.registrationOpen;
+  const storageDirty = dataRoot !== saved.dataRoot;
+
+  const dirty = notificationsDirty || identityDirty || registrationDirty || storageDirty;
+
+  function toggleSection(id: string) {
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -279,19 +292,20 @@ export default function SettingsPage() {
     <div className="flex relative flex-col h-screen">
       <PageHeader title={t('settings.title')} subtitle="/admin/settings" />
 
-      <div className="flex-1 min-h-0 overflow-y-auto pb-24 px-6 py-6 flex flex-col gap-8">
+      <div className="flex-1 min-h-0 overflow-y-auto pb-24 px-6 py-6 flex flex-col gap-3">
         {!loaded ? (
           <SettingsPageSkeleton />
         ) : (
           <>
             {/* Notifications */}
-            <section>
-              <h3 className="m-0 mb-1 flex items-center gap-2 text-sm font-bold">
-                <Bell width={14} height={14} />
-                {t('settings.notificationsTitle')}
-              </h3>
-              <p className="m-0 mb-5 text-xs text-ink-3">{t('settings.notificationsDesc')}</p>
-
+            <SettingsCard
+              icon={<Bell width={14} height={14} />}
+              title={t('settings.notificationsTitle')}
+              description={t('settings.notificationsDesc')}
+              open={openSections.has('notifications')}
+              onToggle={() => toggleSection('notifications')}
+              dirty={notificationsDirty}
+            >
               <div className="flex flex-col gap-6">
                 {/* Discord */}
                 <div className="flex border border-dashed bg-line/10 border-line-2 p-4 flex-col gap-3">
@@ -392,16 +406,18 @@ export default function SettingsPage() {
                   )}
                 </div>
               </div>
-            </section>
+            </SettingsCard>
 
             {/* Server Identity */}
-            <section className="border-t border-line pt-6">
-              <h3 className="m-0 mb-1 flex items-center gap-2 text-sm font-bold">
-                <Server width={14} height={14} />
-                {t('settings.serverHostTitle')}
-              </h3>
-              <p className="m-0 mb-5 text-xs text-ink-3">{t('settings.serverHostDesc')}</p>
-
+            <SettingsCard
+              icon={<Server width={14} height={14} />}
+              title={t('settings.serverHostTitle')}
+              description={t('settings.serverHostDesc')}
+              open={openSections.has('identity')}
+              onToggle={() => toggleSection('identity')}
+              dirty={identityDirty}
+              summary={`${networkProviders.find((p) => p.id === networkProvider)?.label ?? networkProvider} · ${serverHost || t('settings.serverHostPlaceholder')}`}
+            >
               <div className="flex flex-col gap-4 border border-dashed bg-line/10 border-line-2 p-4">
                 <div className="flex flex-col gap-2">
                   <span className="font-mono text-xs text-ink-3">
@@ -451,88 +467,27 @@ export default function SettingsPage() {
                   <span className="text-ink-3">{t('settings.serverHostNote')}</span>
                 </div>
               </div>
-            </section>
+            </SettingsCard>
 
             {/* Visitor Registration */}
-            <section>
-              <div className="border-t border-line pt-6">
-                <h3 className="m-0 mb-1 flex items-center gap-2 text-sm font-bold">
-                  <Users width={14} height={14} />
-                  {t('settings.registrationTitle')}
-                </h3>
-                <p className="m-0 mb-5 text-xs text-ink-3">{t('settings.registrationDesc')}</p>
+            <SettingsCard
+              icon={<Users width={14} height={14} />}
+              title={t('settings.registrationTitle')}
+              description={t('settings.registrationDesc')}
+              open={openSections.has('registration')}
+              onToggle={() => toggleSection('registration')}
+              dirty={registrationDirty}
+              summary={registrationOpen ? t('settings.statusOpen') : t('settings.statusClosed')}
+            >
+              <div className="flex flex-col gap-4 border border-dashed bg-line/10 border-line-2 p-4">
+                <Toggle
+                  checked={registrationOpen}
+                  disabled={!canManage}
+                  onChange={(v: boolean) => setRegistrationOpen(v)}
+                  label={t('settings.registrationOpenLabel')}
+                />
 
-                <div className="flex flex-col gap-4 border border-dashed bg-line/10 border-line-2 p-4">
-                  <Toggle
-                    checked={registrationOpen}
-                    disabled={!canManage}
-                    onChange={(v: boolean) => setRegistrationOpen(v)}
-                    label={t('settings.registrationOpenLabel')}
-                  />
-
-                  {!registrationOpen && (
-                    <div
-                      className="flex gap-2 px-3 py-2.5 font-mono text-xs text-yellow"
-                      style={{
-                        background: 'color-mix(in oklab, var(--yellow) 6%, transparent)',
-                        border: '1px solid color-mix(in oklab, var(--yellow) 30%, transparent)',
-                      }}
-                    >
-                      <WarningDiamond width={13} height={13} className="shrink-0" />
-                      <span>{t('settings.registrationClosedWarning')}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </section>
-
-            {/* Data Storage */}
-            <section>
-              <div className="border-t border-line pt-6">
-                <h3 className="m-0 mb-1 flex items-center gap-2 text-sm font-bold">
-                  <Database width={14} height={14} />
-                  {t('settings.dataStorageTitle')}
-                </h3>
-                <p className="m-0 mb-5 text-xs text-ink-3">{t('settings.dataStorageDesc')}</p>
-
-                <div className="flex flex-col gap-4 border border-dashed bg-line/10 border-line-2 p-4">
-                  <TextField
-                    label={t('settings.dataRootLabel')}
-                    hint={t('settings.dataRootHint')}
-                    mono
-                    disabled={!canManage}
-                    placeholder={t('settings.dataRootPlaceholder')}
-                    value={dataRoot}
-                    onChange={(e) => setDataRoot(e.target.value)}
-                  />
-
-                  {canManage && dataRoot.trim() && (
-                    <button
-                      type="button"
-                      onClick={() => setDataRoot('')}
-                      className="self-start inline-flex items-center gap-1 font-mono text-xs text-ink-3 underline cursor-pointer bg-transparent border-0 p-0 hover:text-ink"
-                    >
-                      <Close width={11} height={11} />
-                      {t('settings.dataRootClear')}
-                    </button>
-                  )}
-
-                  <div
-                    className="px-3 py-2.5 font-mono text-xs flex flex-col gap-1"
-                    style={{
-                      background: 'color-mix(in oklab, var(--accent) 6%, transparent)',
-                      border: '1px solid color-mix(in oklab, var(--accent) 20%, transparent)',
-                    }}
-                  >
-                    <span className="text-ink-3 uppercase tracking-[.06em] text-[10px]">
-                      {t('settings.effectiveLabel')}
-                    </span>
-                    <span className="text-ink-2">{t('settings.effectiveDesc')}</span>
-                    <span className="text-ink break-all">
-                      {t('settings.effectivePattern', { root: effectiveRoot })}
-                    </span>
-                  </div>
-
+                {!registrationOpen && (
                   <div
                     className="flex gap-2 px-3 py-2.5 font-mono text-xs text-yellow"
                     style={{
@@ -541,48 +496,106 @@ export default function SettingsPage() {
                     }}
                   >
                     <WarningDiamond width={13} height={13} className="shrink-0" />
-                    <span>{t('settings.migrationWarning')}</span>
+                    <span>{t('settings.registrationClosedWarning')}</span>
                   </div>
-                </div>
+                )}
               </div>
-            </section>
+            </SettingsCard>
 
-            {/* Danger Zone */}
-            <section>
-              <div className="border-t border-line pt-6">
-                <h3 className="m-0 mb-1 flex items-center gap-2 text-sm font-bold text-red">
-                  <WarningDiamond width={14} height={14} />
-                  {t('settings.dangerZoneTitle')}
-                </h3>
-                <p className="m-0 mb-5 text-xs text-ink-3">{t('settings.dangerZoneDesc')}</p>
+            {/* Data Storage */}
+            <SettingsCard
+              icon={<Database width={14} height={14} />}
+              title={t('settings.dataStorageTitle')}
+              description={t('settings.dataStorageDesc')}
+              open={openSections.has('storage')}
+              onToggle={() => toggleSection('storage')}
+              dirty={storageDirty}
+              summary={effectiveRoot}
+            >
+              <div className="flex flex-col gap-4 border border-dashed bg-line/10 border-line-2 p-4">
+                <TextField
+                  label={t('settings.dataRootLabel')}
+                  hint={t('settings.dataRootHint')}
+                  mono
+                  disabled={!canManage}
+                  placeholder={t('settings.dataRootPlaceholder')}
+                  value={dataRoot}
+                  onChange={(e) => setDataRoot(e.target.value)}
+                />
+
+                {canManage && dataRoot.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setDataRoot('')}
+                    className="self-start inline-flex items-center gap-1 font-mono text-xs text-ink-3 underline cursor-pointer bg-transparent border-0 p-0 hover:text-ink"
+                  >
+                    <Close width={11} height={11} />
+                    {t('settings.dataRootClear')}
+                  </button>
+                )}
 
                 <div
-                  className="flex items-center justify-between gap-4 px-4 py-4"
+                  className="px-3 py-2.5 font-mono text-xs flex flex-col gap-1"
                   style={{
-                    background: 'color-mix(in oklab, var(--red) 6%, transparent)',
-                    border: '1px dashed color-mix(in oklab, var(--red) 25%, transparent)',
+                    background: 'color-mix(in oklab, var(--accent) 6%, transparent)',
+                    border: '1px solid color-mix(in oklab, var(--accent) 20%, transparent)',
                   }}
                 >
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-mono text-xs text-ink">{t('settings.wipeAllTitle')}</span>
-                    <span className="font-mono text-xs text-ink-3">
-                      {t('settings.wipeAllDesc')}
-                    </span>
-                  </div>
-                  {canManage && (
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      disabled={wiping}
-                      onClick={() => setConfirmWipe(true)}
-                    >
-                      <Trash width={12} height={12} className="mr-1.5" />
-                      {wiping ? t('settings.wiping') : t('settings.wipeAllBtn')}
-                    </Button>
-                  )}
+                  <span className="text-ink-3 uppercase tracking-[.06em] text-[10px]">
+                    {t('settings.effectiveLabel')}
+                  </span>
+                  <span className="text-ink-2">{t('settings.effectiveDesc')}</span>
+                  <span className="text-ink break-all">
+                    {t('settings.effectivePattern', { root: effectiveRoot })}
+                  </span>
+                </div>
+
+                <div
+                  className="flex gap-2 px-3 py-2.5 font-mono text-xs text-yellow"
+                  style={{
+                    background: 'color-mix(in oklab, var(--yellow) 6%, transparent)',
+                    border: '1px solid color-mix(in oklab, var(--yellow) 30%, transparent)',
+                  }}
+                >
+                  <WarningDiamond width={13} height={13} className="shrink-0" />
+                  <span>{t('settings.migrationWarning')}</span>
                 </div>
               </div>
-            </section>
+            </SettingsCard>
+
+            {/* Danger Zone */}
+            <SettingsCard
+              icon={<WarningDiamond width={14} height={14} />}
+              title={t('settings.dangerZoneTitle')}
+              description={t('settings.dangerZoneDesc')}
+              open={openSections.has('danger')}
+              onToggle={() => toggleSection('danger')}
+              danger
+            >
+              <div
+                className="flex items-center justify-between gap-4 px-4 py-4"
+                style={{
+                  background: 'color-mix(in oklab, var(--red) 6%, transparent)',
+                  border: '1px dashed color-mix(in oklab, var(--red) 25%, transparent)',
+                }}
+              >
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-mono text-xs text-ink">{t('settings.wipeAllTitle')}</span>
+                  <span className="font-mono text-xs text-ink-3">{t('settings.wipeAllDesc')}</span>
+                </div>
+                {canManage && (
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    disabled={wiping}
+                    onClick={() => setConfirmWipe(true)}
+                  >
+                    <Trash width={12} height={12} className="mr-1.5" />
+                    {wiping ? t('settings.wiping') : t('settings.wipeAllBtn')}
+                  </Button>
+                )}
+              </div>
+            </SettingsCard>
           </>
         )}
       </div>
