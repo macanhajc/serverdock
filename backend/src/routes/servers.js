@@ -111,7 +111,8 @@ async function buildServerResponse(game, status, host) {
 router.get('/', async (req, res) => {
   const games = getGames();
   // Host is the same for every game — resolve it once instead of once per
-  // game (resolveHost() shells out to `netbird status` on a cache miss).
+  // game (resolveHost() shells out to the active network provider's CLI on
+  // a cache miss).
   const [statuses, host] = await Promise.all([
     getEffectiveStatuses(games.map((g) => g.id)),
     resolveHost(),

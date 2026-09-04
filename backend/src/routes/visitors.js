@@ -64,9 +64,9 @@ router.post('/identify', async (req, res) => {
 });
 
 // GET /api/visitors — admin only. Visitors reach this VPN-gated server as
-// netbird peers, so their tracked IP doubles as a peer address — match it
-// against the current peer list to surface each visitor's device name and
-// live online status.
+// peers of the active network provider, so their tracked IP doubles as a
+// peer address — match it against the current peer list to surface each
+// visitor's device name and live online status.
 router.get('/', verifyToken, async (_req, res) => {
   const { peers } = await getVpnStatus();
   const peerByIp = new Map(peers.filter((p) => p.ip).map((p) => [p.ip, p]));

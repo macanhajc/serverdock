@@ -1,9 +1,10 @@
 import { useTranslation } from 'react-i18next';
 import { ChevronRight } from 'pixelarticons/react';
 import { StatusDot } from '../../../../components/core/StatusDot';
-import type { VpnStatus } from '../../../../types';
+import { getNetworkProvider } from '../../../../data/networkProviders';
+import type { VpnStatus, NetworkProviderId } from '../../../../types';
 
-interface NetBirdCardProps {
+interface NetworkCardProps {
   status: VpnStatus | null;
   loaded: boolean;
   navigate: (path: string) => void;
@@ -20,17 +21,25 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-// Surfaces NetBird's own health at a glance on the main dashboard — every
-// server's connection info depends on this VPN mesh being up, so a silent
+// Surfaces the active network provider's health at a glance on the main
+// dashboard — every server's connection info depends on it, so a silent
 // failure here is worse than a silent failure on any one game server.
-export function NetBirdCard({ status, loaded, navigate }: NetBirdCardProps) {
+export function NetworkCard({ status, loaded, navigate }: NetworkCardProps) {
   const { t } = useTranslation();
   if (!loaded) return null;
 
+  const providerId = (status?.provider ?? 'netbird') as NetworkProviderId;
+  const providerMeta = getNetworkProvider(providerId);
+  const isManual = providerId === 'manual';
   const self = status?.self ?? null;
-  const peers = status?.peers.filter((p) => !p.name.includes('proxy')) ?? [];
+  const peers =
+    providerId === 'netbird'
+      ? (status?.peers.filter((p) => !p.name.includes('proxy')) ?? [])
+      : (status?.peers ?? []);
   const online = peers.filter((p) => p.online).length;
-  const isDown = !self;
+  // Manual networking has no self/peer concept — that's not "down", it's
+  // the admin's deliberate choice, so it gets a neutral row, not a red one.
+  const isDown = !isManual && !self;
 
   return (
     <div
@@ -39,27 +48,27 @@ export function NetBirdCard({ status, loaded, navigate }: NetBirdCardProps) {
     >
       <div className="flex items-center gap-2 shrink-0">
         <StatusDot online={!isDown} />
-        <span className="font-mono text-sm text-ink font-semibold">
-          {t('adminDashboard.netbirdTitle')}
-        </span>
+        <span className="font-mono text-sm text-ink font-semibold">{providerMeta.label}</span>
       </div>
 
-      {isDown ? (
+      {isManual ? (
+        <span className="font-mono text-xs text-ink-3">{t('adminDashboard.networkManualLabel')}</span>
+      ) : isDown ? (
         <span className="font-mono text-xs" style={{ color: 'var(--red)' }}>
-          {t('network.vpnInactive')}
+          {t('network.providerInactive', { provider: providerMeta.label })}
         </span>
       ) : (
         <>
           <Field label={t('network.vpnIp')} value={self?.ip ?? '—'} />
           <Field
-            label={t('adminDashboard.netbirdPeers')}
+            label={t('adminDashboard.networkPeersLabel')}
             value={t('network.peerCount', { count: online })}
           />
         </>
       )}
 
       <span className="ml-auto inline-flex items-center gap-1 font-mono text-xs text-ink-3 shrink-0">
-        {t('adminDashboard.netbirdViewNetwork')}
+        {t('adminDashboard.networkViewNetwork')}
         <ChevronRight width={12} height={12} />
       </span>
     </div>

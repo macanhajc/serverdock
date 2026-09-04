@@ -3,18 +3,26 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { TextField } from '../../components/forms/TextField';
+import { Button } from '../../components/core/Button';
 import { LangSwitcher } from '../../components/core/LangSwitcher';
+import { networkProviders } from '../../data/networkProviders';
+import type { NetworkProviderId } from '../../types';
 
 export default function Setup({ onSetupComplete }: { onSetupComplete: () => void }) {
   const { t } = useTranslation();
-  const { login } = useAuth();
+  const { login, token } = useAuth();
   const navigate = useNavigate();
+
+  const [step, setStep] = useState<'account' | 'network'>('account');
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const [networkChoice, setNetworkChoice] = useState<NetworkProviderId>('netbird');
+  const [networkSaving, setNetworkSaving] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -39,13 +47,36 @@ export default function Setup({ onSetupComplete }: { onSetupComplete: () => void
         setError(data.error ?? t('login.invalidCredentials'));
         return;
       }
-      onSetupComplete();
+      // Log in but don't finish yet — the network step below still needs to
+      // run before onSetupComplete() flips needsSetup, which would otherwise
+      // yank this component straight to /auth mid-wizard (see SetupGate).
       login(data.token);
-      navigate('/admin', { replace: true });
+      setStep('network');
     } catch {
       setError(t('login.couldNotReach'));
     } finally {
       setLoading(false);
+    }
+  }
+
+  function finishSetup() {
+    onSetupComplete();
+    navigate('/admin', { replace: true });
+  }
+
+  async function handleNetworkContinue() {
+    setNetworkSaving(true);
+    try {
+      await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ networkProvider: networkChoice }),
+      });
+    } catch {
+      // Best-effort — worst case they adjust it later in Settings.
+    } finally {
+      setNetworkSaving(false);
+      finishSetup();
     }
   }
 
@@ -75,60 +106,113 @@ export default function Setup({ onSetupComplete }: { onSetupComplete: () => void
 
           {/* Form body */}
           <div className="p-6">
-            <h2 className="m-0 mb-1 text-lg font-bold">{t('setup.title')}</h2>
-            <p className="m-0 mb-6 text-xs text-ink-3 font-mono">{t('setup.subtitle')}</p>
+            {step === 'account' && (
+              <>
+                <h2 className="m-0 mb-1 text-lg font-bold">{t('setup.title')}</h2>
+                <p className="m-0 mb-6 text-xs text-ink-3 font-mono">{t('setup.subtitle')}</p>
 
-            {error && (
-              <div
-                className="flex items-center gap-2 mb-4 px-3 py-2 font-mono text-xs text-red"
-                style={{
-                  background: 'color-mix(in oklab, var(--red) 10%, transparent)',
-                  border: '1px solid color-mix(in oklab, var(--red) 45%, transparent)',
-                }}
-              >
-                <span>✕</span>
-                <span>{error}</span>
-              </div>
+                {error && (
+                  <div
+                    className="flex items-center gap-2 mb-4 px-3 py-2 font-mono text-xs text-red"
+                    style={{
+                      background: 'color-mix(in oklab, var(--red) 10%, transparent)',
+                      border: '1px solid color-mix(in oklab, var(--red) 45%, transparent)',
+                    }}
+                  >
+                    <span>✕</span>
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleSubmit} autoComplete="off" className="flex flex-col gap-4">
+                  <TextField
+                    label={t('login.usernameLabel')}
+                    mono
+                    placeholder="admin"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    disabled={loading}
+                    required
+                  />
+                  <TextField
+                    label={t('login.passwordLabel')}
+                    mono
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={loading}
+                    required
+                  />
+                  <TextField
+                    label={t('setup.confirmPasswordLabel')}
+                    mono
+                    type="password"
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    disabled={loading}
+                    required
+                  />
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-3 mt-2 text-sm font-semibold bg-(--accent-dim) border border-(--accent-edge) text-ink tracking-[.02em] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {loading ? t('setup.creating') : t('setup.create')}
+                  </button>
+                </form>
+              </>
             )}
 
-            <form onSubmit={handleSubmit} autoComplete="off" className="flex flex-col gap-4">
-              <TextField
-                label={t('login.usernameLabel')}
-                mono
-                placeholder="admin"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                disabled={loading}
-                required
-              />
-              <TextField
-                label={t('login.passwordLabel')}
-                mono
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={loading}
-                required
-              />
-              <TextField
-                label={t('setup.confirmPasswordLabel')}
-                mono
-                type="password"
-                placeholder="••••••••"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                disabled={loading}
-                required
-              />
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 mt-2 text-sm font-semibold bg-(--accent-dim) border border-(--accent-edge) text-ink tracking-[.02em] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {loading ? t('setup.creating') : t('setup.create')}
-              </button>
-            </form>
+            {step === 'network' && (
+              <>
+                <h2 className="m-0 mb-1 text-lg font-bold">{t('setup.networkTitle')}</h2>
+                <p className="m-0 mb-6 text-xs text-ink-3 font-mono">{t('setup.networkSubtitle')}</p>
+
+                <div className="flex flex-col gap-2 mb-6">
+                  {networkProviders.map((p) => {
+                    const active = p.id === networkChoice;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setNetworkChoice(p.id)}
+                        className={`text-left px-4 py-3 border cursor-pointer transition-colors ${
+                          active
+                            ? 'border-(--accent-edge) bg-(--accent-dim)'
+                            : 'border-line bg-bg-2 hover:bg-bg-3'
+                        }`}
+                      >
+                        <div className="font-mono text-sm font-semibold text-ink">{p.label}</div>
+                        <div className="font-mono text-[11px] text-ink-3 mt-0.5">
+                          {t(p.descriptionKey)}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex gap-3">
+                  <Button
+                    variant="ghost"
+                    className="flex-1 justify-center py-3"
+                    disabled={networkSaving}
+                    onClick={() => finishSetup()}
+                  >
+                    {t('setup.networkSkip')}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    className="flex-1 justify-center py-3"
+                    disabled={networkSaving}
+                    onClick={() => handleNetworkContinue()}
+                  >
+                    {t('setup.networkContinue')}
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Card footer */}

@@ -57,6 +57,7 @@ import { ConsoleTab } from './components/ConsoleTab';
 import { FilesTab } from './components/FilesTab';
 import { ScheduleTab } from './components/ScheduleTab';
 import { BackupTab } from './components/BackupTab';
+import { ServerDetailSkeleton } from './components/ServerDetailSkeleton';
 
 // eslint-disable-next-line no-control-regex
 const stripAnsi = (s: string) => s.replace(/\x1B\[[0-9;]*[mGKHF]/g, '');
@@ -403,7 +404,7 @@ export default function ServerDetail() {
   }
 
   if (!server) {
-    return <div className="p-6 font-mono text-xs text-ink-3">{t('common.loading')}</div>;
+    return <ServerDetailSkeleton />;
   }
 
   const { name, status, connection, image, rcon } = server;

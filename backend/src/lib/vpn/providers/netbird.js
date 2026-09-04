@@ -1,17 +1,10 @@
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
-// Cache the status for 30 seconds to avoid subprocess overhead on every request
-let cache = null;
-let cacheAt = 0;
-const CACHE_TTL = 30_000;
-
-async function run(cmd) {
-  const { stdout } = await execAsync(cmd, { timeout: 5000 });
-  return stdout.trim();
-}
+export const id = 'netbird';
+export const label = 'NetBird';
 
 // NetBird reports addresses as CIDR (e.g. "100.64.0.1/16") — strip the mask.
 function stripCidr(ip) {
@@ -22,13 +15,21 @@ function isConnected(status) {
   return (status ?? '').toLowerCase() === 'connected';
 }
 
-export async function getStatus() {
-  const now = Date.now();
-  if (cache && now - cacheAt < CACHE_TTL) return cache;
+// NetBird marshals time.Duration as plain nanoseconds (no unit suffix).
+function normalizeLatency(latencyNs) {
+  return typeof latencyNs === 'number' && latencyNs > 0 ? Math.round(latencyNs / 1e6) : null;
+}
 
+function normalizeConnType(connectionType) {
+  if (connectionType === 'P2P') return 'direct';
+  if (connectionType === 'Relayed') return 'relayed';
+  return null;
+}
+
+export async function getStatus() {
   try {
-    const raw = await run('netbird status --json');
-    const data = JSON.parse(raw);
+    const { stdout } = await execFileAsync('netbird', ['status', '--json'], { timeout: 5000 });
+    const data = JSON.parse(stdout);
 
     // Local peer info is reported at the top level, not under a "localPeerState" key.
     const self = {
@@ -45,20 +46,13 @@ export async function getStatus() {
       os: p.os ?? null,
       online: isConnected(p.status),
       lastSeen: p.lastStatusUpdate ?? null,
+      latencyMs: normalizeLatency(p.latency),
+      connectionType: normalizeConnType(p.connectionType),
     }));
 
-    cache = { provider: 'netbird', self, peers };
-    cacheAt = now;
-    return cache;
+    return { self, peers };
   } catch {
     // NetBird not installed or not running
-    cache = { provider: 'netbird', self: null, peers: [] };
-    cacheAt = now;
-    return cache;
+    return { self: null, peers: [] };
   }
-}
-
-export function invalidateCache() {
-  cache = null;
-  cacheAt = 0;
 }

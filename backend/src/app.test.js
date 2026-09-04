@@ -473,6 +473,39 @@ describe('settings.js', () => {
     expect(getRes.body.registrationOpen).toBe(false);
   });
 
+  it('rejects an unknown networkProvider', async () => {
+    const { token } = await makeAdmin({ permissions: ['settings:manage'] });
+    const res = await request(app)
+      .put('/api/settings')
+      .set(bearer(token))
+      .send({ networkProvider: 'made-up' });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a wireguardInterface with shell metacharacters', async () => {
+    const { token } = await makeAdmin({ permissions: ['settings:manage'] });
+    const res = await request(app)
+      .put('/api/settings')
+      .set(bearer(token))
+      .send({ wireguardInterface: 'wg0; rm -rf /' });
+    expect(res.status).toBe(400);
+  });
+
+  it('persists networkProvider and wireguardInterface and returns them from GET', async () => {
+    const { token } = await makeAdmin({ permissions: ['settings:manage'] });
+    const putRes = await request(app)
+      .put('/api/settings')
+      .set(bearer(token))
+      .send({ networkProvider: 'wireguard', wireguardInterface: 'wg1' });
+    expect(putRes.status).toBe(200);
+    expect(putRes.body.networkProvider).toBe('wireguard');
+    expect(putRes.body.wireguardInterface).toBe('wg1');
+
+    const getRes = await request(app).get('/api/settings').set(bearer(token));
+    expect(getRes.body.networkProvider).toBe('wireguard');
+    expect(getRes.body.wireguardInterface).toBe('wg1');
+  });
+
   it('403s POST /api/settings/wipe-all for an admin without settings:manage', async () => {
     const { token } = await makeAdmin({ permissions: [] });
     const res = await request(app).post('/api/settings/wipe-all').set(bearer(token)).send({ confirm: true });

@@ -17,9 +17,12 @@ import { useToast } from '../../../context/ToastContext';
 import { Button } from '../../../components/core/Button';
 import { Toggle } from '../../../components/core/Toggle';
 import { TextField } from '../../../components/forms/TextField';
+import { SegmentedControl } from '../../../components/forms/SegmentedControl';
 import { ConfirmModal } from '../../../components/core/ConfirmModal';
 import { PageHeader } from '../../../components/core/PageHeader';
 import { SettingsPageSkeleton } from './components/SettingsPageSkeleton';
+import { networkProviders } from '../../../data/networkProviders';
+import type { NetworkProviderId } from '../../../types';
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -30,6 +33,8 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 
 interface SavedSettings {
   serverHost: string;
+  networkProvider: NetworkProviderId;
+  wireguardInterface: string;
   registrationOpen: boolean;
   dataRoot: string;
   discordWebhookUrl: string;
@@ -42,6 +47,8 @@ export default function SettingsPage() {
   const { addToast } = useToast();
 
   const [serverHost, setServerHost] = useState('');
+  const [networkProvider, setNetworkProvider] = useState<NetworkProviderId>('netbird');
+  const [wireguardInterface, setWireguardInterface] = useState('wg0');
   const [registrationOpen, setRegistrationOpen] = useState(true);
   const [dataRoot, setDataRoot] = useState('');
   const [defaultDataRoot, setDefault] = useState('');
@@ -52,6 +59,8 @@ export default function SettingsPage() {
   const [wiping, setWiping] = useState(false);
   const [saved, setSaved] = useState<SavedSettings>({
     serverHost: '',
+    networkProvider: 'netbird',
+    wireguardInterface: 'wg0',
     registrationOpen: true,
     dataRoot: '',
     discordWebhookUrl: '',
@@ -72,11 +81,15 @@ export default function SettingsPage() {
       .then((data) => {
         const s: SavedSettings = {
           serverHost: data.serverHost ?? '',
+          networkProvider: data.networkProvider ?? 'netbird',
+          wireguardInterface: data.wireguardInterface ?? 'wg0',
           registrationOpen: data.registrationOpen ?? true,
           dataRoot: data.dataRoot ?? '',
           discordWebhookUrl: data.discordWebhookUrl ?? '',
         };
         setServerHost(s.serverHost);
+        setNetworkProvider(s.networkProvider);
+        setWireguardInterface(s.wireguardInterface);
         setRegistrationOpen(s.registrationOpen);
         setDataRoot(s.dataRoot);
         setDiscordWebhookUrl(s.discordWebhookUrl);
@@ -100,6 +113,8 @@ export default function SettingsPage() {
 
   const dirty =
     serverHost !== saved.serverHost ||
+    networkProvider !== saved.networkProvider ||
+    wireguardInterface !== saved.wireguardInterface ||
     registrationOpen !== saved.registrationOpen ||
     dataRoot !== saved.dataRoot ||
     discordWebhookUrl !== saved.discordWebhookUrl;
@@ -113,7 +128,14 @@ export default function SettingsPage() {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ serverHost, registrationOpen, dataRoot, discordWebhookUrl }),
+        body: JSON.stringify({
+          serverHost,
+          networkProvider,
+          wireguardInterface,
+          registrationOpen,
+          dataRoot,
+          discordWebhookUrl,
+        }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -123,11 +145,15 @@ export default function SettingsPage() {
       const data = await res.json();
       const s: SavedSettings = {
         serverHost: data.serverHost ?? '',
+        networkProvider: data.networkProvider ?? 'netbird',
+        wireguardInterface: data.wireguardInterface ?? 'wg0',
         registrationOpen: data.registrationOpen ?? true,
         dataRoot: data.dataRoot ?? '',
         discordWebhookUrl: data.discordWebhookUrl ?? '',
       };
       setServerHost(s.serverHost);
+      setNetworkProvider(s.networkProvider);
+      setWireguardInterface(s.wireguardInterface);
       setRegistrationOpen(s.registrationOpen);
       setDataRoot(s.dataRoot);
       setDiscordWebhookUrl(s.discordWebhookUrl);
@@ -377,6 +403,35 @@ export default function SettingsPage() {
               <p className="m-0 mb-5 text-xs text-ink-3">{t('settings.serverHostDesc')}</p>
 
               <div className="flex flex-col gap-4 border border-dashed bg-line/10 border-line-2 p-4">
+                <div className="flex flex-col gap-2">
+                  <span className="font-mono text-xs text-ink-3">
+                    {t('settings.networkProviderLabel')}
+                  </span>
+                  <SegmentedControl
+                    className="flex-wrap"
+                    options={networkProviders.map((p) => ({ label: p.label, value: p.id }))}
+                    value={networkProvider}
+                    disabled={!canManage}
+                    onChange={(value) => setNetworkProvider(value as NetworkProviderId)}
+                  />
+                  <span className="font-mono text-[11px] text-ink-3">
+                    {t(
+                      networkProviders.find((p) => p.id === networkProvider)?.descriptionKey ??
+                        'networkProviders.manual'
+                    )}
+                  </span>
+                </div>
+                {networkProvider === 'wireguard' && (
+                  <TextField
+                    label={t('settings.wireguardInterfaceLabel')}
+                    hint={t('settings.wireguardInterfaceHint')}
+                    mono
+                    disabled={!canManage}
+                    placeholder="wg0"
+                    value={wireguardInterface}
+                    onChange={(e) => setWireguardInterface(e.target.value)}
+                  />
+                )}
                 <TextField
                   label={t('settings.serverHostLabel')}
                   hint={t('settings.serverHostHint')}

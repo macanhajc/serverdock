@@ -11,6 +11,10 @@ const TMP_PATH = `${SETTINGS_PATH}.tmp`;
 const DEFAULTS = {
   dataRoot: '',
   serverHost: '',
+  // Preserves current behavior for existing installs — resolveHost() has
+  // always tried netbird first, so an unset provider must keep doing that.
+  networkProvider: 'netbird',
+  wireguardInterface: 'wg0',
   registrationOpen: true,
   discordWebhookUrl: '',
   vapidPublicKey: '',

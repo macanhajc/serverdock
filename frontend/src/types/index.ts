@@ -168,9 +168,9 @@ export interface Visitor {
   firstSeen?: string;
   lastSeen?: string;
   blocked: boolean;
-  // Matched by IP against the current netbird peer list — null when the
-  // visitor's IP has no corresponding peer (e.g. netbird is down, or the
-  // peer was removed since).
+  // Matched by IP against the current network provider's peer list — null
+  // when the visitor's IP has no corresponding peer (e.g. the provider is
+  // down/unconfigured, or the peer was removed since).
   peer?: { name: string; online: boolean; os?: string; lastSeen?: string } | null;
 }
 
@@ -185,6 +185,8 @@ export interface VpnSelf {
   online: boolean;
 }
 
+export type VpnConnectionType = 'direct' | 'relayed';
+
 export interface VpnPeer {
   id: string;
   name: string;
@@ -192,12 +194,16 @@ export interface VpnPeer {
   os?: string;
   online: boolean;
   lastSeen?: string;
+  latencyMs?: number | null;
+  connectionType?: VpnConnectionType | null;
 }
+
+export type NetworkProviderId = 'netbird' | 'tailscale' | 'wireguard' | 'zerotier' | 'manual';
 
 export interface VpnStatus {
   self?: VpnSelf;
   peers: VpnPeer[];
-  provider?: string;
+  provider?: NetworkProviderId;
 }
 
 export interface LogLine {

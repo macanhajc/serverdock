@@ -15,7 +15,7 @@ import {
   getDisplayPlayerCount,
 } from '../../../utils/serverStatus';
 import { timeAgo } from '../../../utils/format';
-import type { Server } from '../../../types';
+import type { Server, NetworkProviderId } from '../../../types';
 
 interface Visitor {
   username: string;
@@ -34,6 +34,17 @@ export default function PublicDashboard() {
   const [serversLoaded, setServersLoaded] = useState(false);
   const [search, setSearch] = useState('');
   const [showHelp, setShowHelp] = useState(false);
+  const [networkProvider, setNetworkProvider] = useState<NetworkProviderId | null>(null);
+
+  // The "how to connect" walkthrough only has NetBird-specific steps written
+  // so far — gate it on the admin's chosen provider instead of showing
+  // instructions that don't match their actual setup.
+  useEffect(() => {
+    fetch('/api/settings/public')
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data) => setNetworkProvider(data.networkProvider ?? null))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem('sd_visitor_token');
@@ -195,20 +206,22 @@ export default function PublicDashboard() {
         </div>
       </PageHeader>
 
-      {/* Help banner */}
-      <div
-        className="flex items-center gap-3 px-6 py-3 border-b border-line flex-wrap"
-        style={{ background: 'var(--accent-dim)' }}
-      >
-        <span className="text-accent font-bold text-[15px] shrink-0">ℹ</span>
-        <span className="text-sm text-white">{t('publicDashboard.helpBannerText')}</span>
-        <button
-          onClick={() => setShowHelp(true)}
-          className="ml-auto shrink-0 border px-3.5 py-2 text-xs font-semibold cursor-pointer bg-accent text-white border-accent tracking-[.02em]"
+      {/* Help banner — netbird-only for now, see the networkProvider fetch above */}
+      {networkProvider === 'netbird' && (
+        <div
+          className="flex items-center gap-3 px-6 py-3 border-b border-line flex-wrap"
+          style={{ background: 'var(--accent-dim)' }}
         >
-          {t('publicDashboard.howToConnect')}
-        </button>
-      </div>
+          <span className="text-accent font-bold text-[15px] shrink-0">ℹ</span>
+          <span className="text-sm text-white">{t('publicDashboard.helpBannerText')}</span>
+          <button
+            onClick={() => setShowHelp(true)}
+            className="ml-auto shrink-0 border px-3.5 py-2 text-xs font-semibold cursor-pointer bg-accent text-white border-accent tracking-[.02em]"
+          >
+            {t('publicDashboard.howToConnect')}
+          </button>
+        </div>
+      )}
 
       {/* Card grid */}
       <div className="grid gap-6 pt-8 pb-16 px-6 grid-cols-[repeat(auto-fill,minmax(var(--card-min),1fr))] *:max-w-105">
@@ -264,7 +277,9 @@ export default function PublicDashboard() {
         )}
       </div>
 
-      {showHelp && <HowToConnectModal onClose={() => setShowHelp(false)} />}
+      {showHelp && networkProvider === 'netbird' && (
+        <HowToConnectModal onClose={() => setShowHelp(false)} />
+      )}
     </div>
   );
 }

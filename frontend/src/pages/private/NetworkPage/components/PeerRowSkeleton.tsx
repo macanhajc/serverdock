@@ -14,6 +14,12 @@ export function PeerRowSkeleton() {
         <div className="h-3 w-14 bg-line-2 rounded-[1px]" />
       </td>
       <td className="px-4 py-3 border-r border-line">
+        <div className="h-3 w-14 bg-line-2 rounded-[1px]" />
+      </td>
+      <td className="px-4 py-3 border-r border-line">
+        <div className="h-3 w-10 bg-line-2 rounded-[1px]" />
+      </td>
+      <td className="px-4 py-3 border-r border-line">
         <div className="h-3 w-12 bg-line-2 rounded-[1px]" />
       </td>
       <td className="px-4 py-3">

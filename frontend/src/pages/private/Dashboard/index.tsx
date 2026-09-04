@@ -19,7 +19,7 @@ import type {
 } from '../../../types';
 import { GlobalStatsCard } from './components/GlobalStatsCard';
 import { OsInfoCard } from './components/OsInfoCard';
-import { NetBirdCard } from './components/NetBirdCard';
+import { NetworkCard } from './components/NetworkCard';
 import { MonitoringRowSkeleton } from './components/MonitoringRowSkeleton';
 import { MonitoringRow } from './components/MonitoringRow';
 import { Button } from '../../../components';
@@ -353,9 +353,10 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
     };
   }, []);
 
-  // "Players online" is the count of Netbird peers currently connected to the
-  // VPN — the only always-available presence signal (per-game A2S player
-  // counts only exist for a handful of Steam/Source titles).
+  // "Players online" is the count of the active network provider's peers
+  // currently connected — the only always-available presence signal
+  // (per-game A2S player counts only exist for a handful of Steam/Source
+  // titles). Empty/zero when the provider is 'manual' (no peer concept).
   useEffect(() => {
     function fetchVpnStatus() {
       fetch('/api/vpn/status', { headers: { Authorization: `Bearer ${token}` } })
@@ -451,7 +452,7 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
         </div>
 
         {hostOs && <OsInfoCard hostOs={hostOs} />}
-        <NetBirdCard status={vpnStatus} loaded={vpnLoaded} navigate={navigate} />
+        <NetworkCard status={vpnStatus} loaded={vpnLoaded} navigate={navigate} />
 
         <GlobalStatsCard
           servers={servers}
