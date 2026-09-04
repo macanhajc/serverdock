@@ -2,10 +2,16 @@ import { memo } from 'react';
 import { ArrowDown, ArrowUp, Play, Refresh, Stop, Trash } from 'pixelarticons/react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../../../context/AuthContext';
-import { Button, CopyButton, StatusBadge, Sparkline } from '../../../../components';
+import { Button, CopyButton, StatusBadge, Sparkline, ServerIssuesBadge } from '../../../../components';
 import { UptimeTicker } from '../../../../components/core/UptimeTicker';
 import { fmtBytes, timeAgo, formatDate } from '../../../../utils/format';
-import { toUiStatus, IN_FLIGHT, gameHue, gameMark } from '../../../../utils/serverStatus';
+import {
+  toUiStatus,
+  IN_FLIGHT,
+  gameHue,
+  gameMark,
+  getDisplayPlayerCount,
+} from '../../../../utils/serverStatus';
 import { Server, ServerStats, PullProgress } from '../../../../types';
 
 type Action = 'start' | 'stop' | 'restart' | 'reset';
@@ -42,6 +48,18 @@ export const MonitoringRow = memo(function MonitoringRow({
   // Busy if this client has a request in flight, or any client/scheduler does
   const busy = !!actionLoading || IN_FLIGHT.includes(status);
   const memMax = stats?.memLimit ?? null;
+  const displayPlayers = getDisplayPlayerCount(server);
+  // A crash or a failed start/restart means the server actually had a
+  // problem running, so either outranks a mere resource-usage warning for
+  // the row's tint — resourceAlert can't overlap with them anyway (it only
+  // exists while running; they only exist while it isn't, until the next
+  // successful start clears them — see socketHandlers.js).
+  const rowTint =
+    server.lastCrash || server.actionFailure
+      ? 'color-mix(in oklab, var(--red) 6%, var(--bg-1))'
+      : server.resourceAlert
+        ? 'color-mix(in oklab, var(--yellow) 6%, var(--bg-1))'
+        : null;
 
   const badgeLabel =
     status === 'pulling' && pull
@@ -56,24 +74,33 @@ export const MonitoringRow = memo(function MonitoringRow({
   return (
     <tr
       className="group border-b border-line hover:bg-bg-2 last:border-none cursor-pointer transition-colors"
+      style={rowTint ? { background: rowTint } : undefined}
       onClick={() => navigate(`/admin/servers/${id}`)}
     >
-      <td className="border-r border-line px-5 py-3.5 sticky left-0 z-10 bg-bg-1 group-hover:bg-bg-2 transition">
+      <td
+        className="border-r border-line px-5 py-3.5 sticky left-0 z-10 bg-bg-1 group-hover:bg-bg-2 transition"
+        style={rowTint ? { background: rowTint } : undefined}
+      >
         <div className="flex items-center gap-4">
-          <div className="w-8 h-8 shrink-0 border border-line overflow-hidden grid place-items-center">
-            {server.avatarUrl ? (
-              <img src={server.avatarUrl} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <span
-                className="w-full h-full grid place-items-center font-mono text-[10px] font-bold"
-                style={{
-                  color: `hsl(${gameHue(id)} 55% 78%)`,
-                  background: `hsl(${gameHue(id)} 38% 16%)`,
-                }}
-              >
-                {gameMark(name)}
-              </span>
-            )}
+          <div className="relative w-8 h-8 shrink-0">
+            <div className="w-8 h-8 border border-line overflow-hidden grid place-items-center">
+              {server.avatarUrl ? (
+                <img src={server.avatarUrl} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <span
+                  className="w-full h-full grid place-items-center font-mono text-[10px] font-bold"
+                  style={{
+                    color: `hsl(${gameHue(id)} 55% 78%)`,
+                    background: `hsl(${gameHue(id)} 38% 16%)`,
+                  }}
+                >
+                  {gameMark(name)}
+                </span>
+              )}
+            </div>
+            <div className="absolute -top-1.5 -right-1.5">
+              <ServerIssuesBadge server={server} />
+            </div>
           </div>
           <div className="flex flex-col items-start gap-1 min-w-0">
             <span className="font-bold text-sm text-ink whitespace-nowrap text-ellipsis overflow-hidden max-w-full">
@@ -108,9 +135,9 @@ export const MonitoringRow = memo(function MonitoringRow({
       </td>
 
       <td className="border-r border-line px-4 py-3.5">
-        {server.players !== null && server.players !== undefined ? (
+        {displayPlayers !== null ? (
           <span className="font-mono text-xs text-ink" title={server.playerList ?? undefined}>
-            {server.players}
+            {displayPlayers}
           </span>
         ) : (
           <span className="font-mono text-xs text-ink-3">—</span>

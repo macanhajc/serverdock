@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Check,
   Copy,
   ExternalLink,
+  User,
   Refresh,
   WarningDiamond,
   X,
@@ -11,9 +12,17 @@ import {
 import { CopyButton } from '../../../../components/core/CopyButton';
 import { UptimeTicker } from '../../../../components/core/UptimeTicker';
 import { copyText } from '../../../../utils/clipboard';
-import { timeAgo } from '../../../../utils/format';
-import type { Server } from '../../../../types';
-import { gameHue, gameMark } from '../../../../utils/serverStatus';
+import { timeAgo, formatDate } from '../../../../utils/format';
+import type { Server, ServerEventEntry } from '../../../../types';
+import {
+  gameHue,
+  gameMark,
+  getResourceIssues,
+  getCrashSummary,
+  getActionFailureSummary,
+  getDisplayPlayerCount,
+  splitPlayerListEntries,
+} from '../../../../utils/serverStatus';
 import { BuildSection } from './BuildSection';
 
 // ─── InfoRow ──────────────────────────────────────────────────────────────────
@@ -68,19 +77,6 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   );
-}
-
-// Best-effort split of a game's raw RCON player-list text into individual
-// entries — output format varies per title (and per listCommand the admin
-// configures), so this can't parse out structured id/name fields, just break
-// the blob into rows the admin can scan and click-to-copy.
-function splitPlayerListEntries(raw: string): string[] {
-  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  if (lines.length > 1) return lines;
-  return raw
-    .split(',')
-    .map((l) => l.trim())
-    .filter(Boolean);
 }
 
 function fmtWhen(iso: string) {
@@ -168,6 +164,128 @@ function UpdateCheckRow({ id, token }: { id: string; token: string | null }) {
   );
 }
 
+// ─── EventHistorySection ────────────────────────────────────────────────────
+
+function summarizeEvent(
+  entry: ServerEventEntry,
+  t: (key: string, opts?: Record<string, unknown>) => string
+): string {
+  if (entry.type === 'crash') {
+    return getCrashSummary({ ...entry.data, at: entry.createdAt }, t);
+  }
+  if (entry.type === 'action_failed') {
+    return getActionFailureSummary({ ...entry.data, at: entry.createdAt }, t);
+  }
+  return getResourceIssues({ ...entry.data, since: entry.createdAt })
+    .map((issue) =>
+      t(issue.kind === 'cpu' ? 'resourceAlert.cpuIssue' : 'resourceAlert.memoryIssue', {
+        pct: issue.pct.toFixed(0),
+      })
+    )
+    .join(' · ');
+}
+
+// A single history row — its own component (rather than inline in a .map())
+// so the stack-trace toggle can hold its own expand/collapse state per row.
+function EventRow({
+  entry,
+  t,
+}: {
+  entry: ServerEventEntry;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}) {
+  const [showStack, setShowStack] = useState(false);
+  const color = entry.type === 'resource_high' ? 'var(--yellow)' : 'var(--red)';
+  const stack = entry.type === 'action_failed' ? entry.data.stack : null;
+
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center gap-3 px-4 py-2.5">
+        <WarningDiamond width={12} height={12} style={{ color }} className="shrink-0" />
+        <span className="flex-1 min-w-0 font-mono text-xs text-ink truncate">
+          {summarizeEvent(entry, t)}
+        </span>
+        {!entry.resolvedAt && (
+          <span
+            className="font-mono text-[10px] uppercase tracking-wider px-1.5 py-0.5 shrink-0"
+            style={{ color, background: `color-mix(in oklab, ${color} 12%, transparent)` }}
+          >
+            {t('serverDetail.eventOngoing')}
+          </span>
+        )}
+        {stack && (
+          <button
+            type="button"
+            onClick={() => setShowStack((v) => !v)}
+            className="font-mono text-[10px] text-ink-3 hover:text-ink px-1.5 py-0.5 border border-line bg-bg-2 cursor-pointer shrink-0"
+          >
+            {showStack ? t('serverDetail.eventHideStack') : t('serverDetail.eventShowStack')}
+          </button>
+        )}
+        <span
+          className="font-mono text-[11px] w-20 text-ink-3 shrink-0"
+          title={formatDate(entry.createdAt)}
+        >
+          {timeAgo(entry.createdAt, t)}
+        </span>
+      </div>
+      {stack && showStack && (
+        <pre className="mx-4 mb-3 p-3 bg-bg-2 border border-line font-mono text-[10px] text-ink-2 overflow-x-auto whitespace-pre-wrap break-words">
+          {stack}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+// Bounded, append-only history of past resource/crash alerts for this game
+// (see backend/src/lib/eventLog.js) — separate from the live banners above,
+// which only reflect the *current* unresolved condition. Fetched on demand
+// rather than pushed over the socket since it's a diagnostic tail, not
+// something that needs to update live while the tab is open.
+function EventHistorySection({ id, token }: { id: string; token: string | null }) {
+  const { t } = useTranslation();
+  const [events, setEvents] = useState<ServerEventEntry[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/servers/${id}/events`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data: ServerEventEntry[]) => {
+        if (!cancelled) setEvents(data);
+      })
+      .catch(() => {
+        if (!cancelled) setEvents([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, token]);
+
+  return (
+    <section className="border-t border-line pt-6 pb-6">
+      <SectionTitle>{t('serverDetail.infoEventHistory')}</SectionTitle>
+      {!events ? (
+        <div className="border border-line px-4 py-3 font-mono text-xs text-ink-3">
+          {t('common.loading')}
+        </div>
+      ) : events.length === 0 ? (
+        <div className="border border-line px-4 py-3 font-mono text-xs text-ink-3">
+          {t('serverDetail.eventHistoryEmpty')}
+        </div>
+      ) : (
+        <div className="border border-line divide-y divide-line">
+          {events.map((e) => (
+            <EventRow key={e.id} entry={e} t={t} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ─── InfoTab ──────────────────────────────────────────────────────────────────
 
 interface InfoTabProps {
@@ -187,7 +305,6 @@ export function InfoTab({ server, id, token }: InfoTabProps) {
     ports,
     dataMount,
     pinnedEnv,
-    players,
     query,
     rcon,
     startedAt,
@@ -200,8 +317,10 @@ export function InfoTab({ server, id, token }: InfoTabProps) {
     [server.playerList]
   );
 
+  const displayPlayers = getDisplayPlayerCount(server);
+
   const playersHint =
-    players != null
+    displayPlayers != null
       ? t('serverDetail.infoOnline')
       : status !== 'running'
         ? t('serverDetail.infoOffline')
@@ -311,7 +430,7 @@ export function InfoTab({ server, id, token }: InfoTabProps) {
           <SectionTitle>{t('serverDetail.infoPlayers')}</SectionTitle>
           <div className="border border-line px-5 py-4 flex items-center gap-3">
             <span className="font-mono text-2xl font-bold text-ink">
-              {players != null ? players : '—'}
+              {displayPlayers != null ? displayPlayers : '—'}
             </span>
             <span className="font-mono text-xs text-ink-3">{playersHint}</span>
           </div>
@@ -324,9 +443,10 @@ export function InfoTab({ server, id, token }: InfoTabProps) {
                 {playerListEntries.map((entry, i) => (
                   <div
                     key={i}
-                    className="flex py-2 gap-4 px-4 items-center bg-bg-1 border border-line hover:border-line-2"
+                    className="flex py-2 gap-2 px-2 items-center text-ink-2 hover:text-ink bg-bg-1 border border-line hover:border-line-2"
                   >
-                    <span className="font-mono text-xs text-ink-2 hover:text-ink">
+                    <User width={12} height={12} />
+                    <span className="font-mono text-xs">
                       {entry}
                     </span>
                   </div>
@@ -420,7 +540,7 @@ export function InfoTab({ server, id, token }: InfoTabProps) {
           </section>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-line pt-6 pb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-line pt-6">
           {(pinnedEnv?.length ?? 0) > 0 && (
             <section>
               <SectionTitle>{t('serverDetail.infoSectionEnv')}</SectionTitle>
@@ -485,6 +605,8 @@ export function InfoTab({ server, id, token }: InfoTabProps) {
         {imageSource === 'local' && (
           <BuildSection id={id} token={token} imageBuilt={server.imageBuilt} />
         )}
+
+        <EventHistorySection id={id} token={token} />
 
       </div>
     </div>

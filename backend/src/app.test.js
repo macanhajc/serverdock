@@ -161,6 +161,19 @@ describe('servers.js', () => {
       body: { confirm: true },
     });
   });
+  describe('GET /:id/events (auth only, no specific permission)', () => {
+    it('rejects with 401 when no token is given', async () => {
+      const res = await request(app).get('/api/servers/nonexistent/events');
+      expect(res.status).toBe(401);
+    });
+
+    it('any authenticated admin passes, regardless of granted permissions', async () => {
+      const { token } = await makeAdmin({ permissions: [] });
+      const res = await request(app).get('/api/servers/nonexistent/events').set(bearer(token));
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+  });
 });
 
 describe('games.js', () => {

@@ -72,6 +72,12 @@ export function emitCrashAlert(payload) {
   getIo()?.to('status').emit('crash:alert', payload);
 }
 
+// Persistent counterpart to crash:alert's one-shot toast — `info` is null
+// once the game starts running again or its data is reset.
+export function emitCrashUpdate(id, info) {
+  getIo()?.to('status').emit('crash:update', { id, info });
+}
+
 export function emitDockerStatus(available) {
   getIo()?.to('status').emit('docker:status', { available });
 }
@@ -85,4 +91,18 @@ export function emitDiskStatus(payload) {
 // actual change so clients don't need to poll GET /api/servers to see it.
 export function emitPlayers(id, players, playerList) {
   getIo()?.to('status').emit('players:update', { id, players, playerList });
+}
+
+// Sustained high CPU/memory usage — persists until usage normalizes, unlike
+// server:event's resource_high which is a one-shot toast. `alert` is null
+// when the condition clears.
+export function emitResourceAlert(id, alert) {
+  getIo()?.to('status').emit('resource:update', { id, alert });
+}
+
+// Persistent counterpart to server:event's one-shot action_failed toast,
+// scoped to start/restart failures — see actionFailures.js. `failure` is
+// null once the game starts running again.
+export function emitActionFailure(id, failure) {
+  getIo()?.to('status').emit('action_failure:update', { id, failure });
 }

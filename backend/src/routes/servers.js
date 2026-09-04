@@ -14,6 +14,11 @@ import {
   resetContainer,
 } from '../lib/containers.js';
 import { getPlayers, setPlayers, getPlayerList, setPlayerList } from '../lib/playerQuery.js';
+import { getResourceAlert, clearResourceAlert } from '../lib/resourceAlerts.js';
+import { getLastCrash, clearLastCrash } from '../lib/crashInfo.js';
+import { getActionFailure, clearActionFailure } from '../lib/actionFailures.js';
+import { listEvents } from '../lib/eventLog.js';
+import { emitResourceAlert, emitCrashUpdate, emitActionFailure } from '../lib/statusBus.js';
 import { getSelfIp } from '../lib/vpn/index.js';
 import { getSettings } from '../lib/settingsStore.js';
 import { getDirSizeCached } from '../lib/diskUtils.js';
@@ -67,6 +72,9 @@ async function buildServerResponse(game, status, host) {
     status,
     players: getPlayers(game.id),
     playerList: getPlayerList(game.id),
+    resourceAlert: getResourceAlert(game.id),
+    lastCrash: getLastCrash(game.id),
+    actionFailure: getActionFailure(game.id),
     connection: {
       host,
       port: firstPort?.host ?? null,
@@ -122,6 +130,14 @@ router.get('/:id', async (req, res) => {
   res.json(await buildServerResponse(game, status, host));
 });
 
+// GET /api/servers/:id/events — JWT (read-only diagnostic history for any
+// admin, same "no special permission" treatment as viewing logs or backups).
+router.get('/:id/events', verifyToken, (req, res) => {
+  const game = getGame(req.params.id);
+  if (!game) return res.status(404).json({ error: 'Game not found' });
+  res.json(listEvents(game.id));
+});
+
 const AVATAR_MIME_BY_EXT = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -163,6 +179,7 @@ router.post('/:id/stop', verifyToken, requirePermission('servers:power'), async 
   if (!game) return res.status(404).json({ error: 'Game not found' });
   setPlayers(game.id, null); // before the stop so the final emission carries no players
   setPlayerList(game.id, null);
+  if (clearResourceAlert(game.id)) emitResourceAlert(game.id, null);
   await stopContainer(game.id);
   res.json({ status: 'stopped' });
 });
@@ -209,6 +226,9 @@ router.post('/:id/reset', verifyToken, requirePermission('servers:reset'), async
   if (!game) return res.status(404).json({ error: 'Game not found' });
   setPlayers(game.id, null);
   setPlayerList(game.id, null);
+  if (clearResourceAlert(game.id)) emitResourceAlert(game.id, null);
+  if (clearLastCrash(game.id)) emitCrashUpdate(game.id, null);
+  if (clearActionFailure(game.id)) emitActionFailure(game.id, null);
   await resetContainer(game.id);
   res.json({ status: 'not_created' });
 });

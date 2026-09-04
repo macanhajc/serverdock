@@ -1,0 +1,40 @@
+services:
+  serverdock:
+    build: .
+    image: serverdock:latest
+    container_name: serverdock
+    # Host networking so RCON/A2S polling (which dials localhost:<published
+    # game port>, per CLAUDE.md) reaches the same machine that actually
+    # published those ports — Linux-only, but this app already targets a
+    # single Ubuntu host. `ports:` is meaningless under host networking; set
+    # PORT below to change which host port the app binds to.
+    network_mode: host
+    restart: unless-stopped
+    # Runs Docker's built-in tini as PID 1 instead of node itself — without
+    # it, Node has no default handling for reaping zombie children (tar,
+    # sendRconCommand's TCP dials, ...) and observably mishandles repeated
+    # SIGTERM delivery on `docker restart`/`docker stop`.
+    init: true
+    environment:
+      - PORT=${PORT:-4000}
+      # Fallback "how do I connect" IP shown to friends when the VPN can't
+      # be auto-detected — netbird auto-detection doesn't cross the
+      # container boundary by default, so set this for Docker installs.
+      - SERVER_HOST=${SERVER_HOST:-}
+      - CONTAINER_DNS=${CONTAINER_DNS:-1.1.1.1,8.8.8.8}
+      - DB_PATH=/opt/serverdock/backend/state/serverdock.db
+      - SETTINGS_PATH=/opt/serverdock/backend/state/settings.json
+      # Omit JWT_SECRET entirely to let the app generate and persist one on
+      # first boot (see backend/src/index.js) — set it here to pin your own.
+    volumes:
+      # Lets ServerDock control game containers on the host's own Docker
+      # daemon (Docker-outside-of-Docker) — same access model as Portainer.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Identity mount: source and target must be the same absolute path.
+      # containers.js hands this exact path to the Docker API as a bind
+      # mount source for each game's data volume, which the *host* daemon
+      # resolves against its own filesystem — if this isn't a real
+      # directory on the host, game data would silently mount empty. Do
+      # not remap the left-hand side.
+      - /opt/serverdock/backend/games:/opt/serverdock/backend/games
+      - /opt/serverdock/backend/state:/opt/serverdock/backend/state

@@ -16,6 +16,9 @@ const DEFAULTS = {
   vapidPublicKey: '',
   vapidPrivateKey: '',
   pushSubscriptions: [],
+  // Auto-generated fallback for process.env.JWT_SECRET when the operator
+  // hasn't supplied one (e.g. a Docker install with no .env) — see index.js.
+  generatedJwtSecret: '',
 };
 
 let settings = { ...DEFAULTS };

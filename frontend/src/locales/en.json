@@ -1,6 +1,7 @@
 {
   "common": {
     "cancel": "Cancel",
+    "close": "Close",
     "save": "Save",
     "delete": "Delete",
     "loading": "Loading…",
@@ -52,6 +53,24 @@
   "error": {
     "unexpected": "Unexpected error",
     "tryAgain": "Try again"
+  },
+  "serverIssues": {
+    "badgeTitle": "Needs attention — click for details",
+    "panelTitle": "Needs attention"
+  },
+  "resourceAlert": {
+    "cpuIssue": "CPU sustained at {{pct}}%",
+    "memoryIssue": "Memory sustained at {{pct}}%"
+  },
+  "crashAlert": {
+    "oom": "Out of memory — the container was killed",
+    "error": "{{message}}",
+    "exitCode": "Exited with code {{code}}",
+    "unknown": "Exited unexpectedly",
+    "exitCodeDetail": "exit code {{code}}"
+  },
+  "actionFailure": {
+    "summary": "{{action}} failed — {{message}}"
   },
   "login": {
     "visitorTitle": "Who are you?",
@@ -187,7 +206,7 @@
     "retry": "Retry"
   },
   "serverDetail": {
-    "back": "← back",
+    "back": "back",
     "tabInfo": "Info",
     "tabLogs": "Logs",
     "tabConsole": "Console",
@@ -383,7 +402,12 @@
     "backupRetentionHint": "Older backups are deleted automatically when a new one is created (0 = keep all)",
     "backupRetentionSaved": "Retention updated",
     "backupRetentionFailed": "Failed to update retention",
-    "backupDownloadFailed": "Download failed"
+    "backupDownloadFailed": "Download failed",
+    "infoEventHistory": "Event History",
+    "eventHistoryEmpty": "No incidents recorded.",
+    "eventOngoing": "ongoing",
+    "eventShowStack": "show stack trace",
+    "eventHideStack": "hide stack trace"
   },
   "visitors": {
     "title": "Visitors",
@@ -589,7 +613,7 @@
     "confirmDeleteBtn": "Remove"
   },
   "gameForm": {
-    "back": "← Back",
+    "back": "Back",
     "addTitle": "Add Game",
     "editTitle": "Edit Game",
     "newSubtitle": "/admin/servers/new · define a new server",

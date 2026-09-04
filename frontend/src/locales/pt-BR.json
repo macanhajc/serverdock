@@ -1,6 +1,7 @@
 {
   "common": {
     "cancel": "Cancelar",
+    "close": "Fechar",
     "save": "Salvar",
     "delete": "Excluir",
     "loading": "Carregando…",
@@ -52,6 +53,23 @@
   "error": {
     "unexpected": "Erro inesperado",
     "tryAgain": "Tentar novamente"
+  },
+  "serverIssues": {
+    "badgeTitle": "Precisa de atenção — clique para ver detalhes",
+    "panelTitle": "Precisa de atenção"
+  },
+  "resourceAlert": {
+    "cpuIssue": "CPU sustentada em {{pct}}%",
+    "memoryIssue": "Memória sustentada em {{pct}}%"
+  },
+  "crashAlert": {
+    "oom": "Sem memória — o container foi encerrado pelo sistema",
+    "error": "{{message}}",
+    "exitCode": "Encerrou com código {{code}}",
+    "unknown": "Encerrou inesperadamente"
+  },
+  "actionFailure": {
+    "summary": "{{action}} falhou — {{message}}"
   },
   "login": {
     "visitorTitle": "Quem é você?",
@@ -187,7 +205,7 @@
     "retry": "Tentar novamente"
   },
   "serverDetail": {
-    "back": "← voltar",
+    "back": "voltar",
     "tabInfo": "Info",
     "tabLogs": "Logs",
     "tabConsole": "Console",
@@ -383,7 +401,12 @@
     "backupRetentionHint": "Backups antigos são excluídos automaticamente quando um novo é criado (0 = manter todos)",
     "backupRetentionSaved": "Retenção atualizada",
     "backupRetentionFailed": "Falha ao atualizar retenção",
-    "backupDownloadFailed": "Falha ao baixar"
+    "backupDownloadFailed": "Falha ao baixar",
+    "infoEventHistory": "Histórico de Eventos",
+    "eventHistoryEmpty": "Nenhum incidente registrado.",
+    "eventOngoing": "em andamento",
+    "eventShowStack": "ver stack trace",
+    "eventHideStack": "ocultar stack trace"
   },
   "visitors": {
     "title": "Visitantes",
@@ -589,7 +612,7 @@
     "confirmDeleteBtn": "Remover"
   },
   "gameForm": {
-    "back": "← Voltar",
+    "back": "Voltar",
     "addTitle": "Adicionar Jogo",
     "editTitle": "Editar Jogo",
     "newSubtitle": "/admin/servers/new · definir um novo servidor",

@@ -1,0 +1,18 @@
+# Local testing override for Windows/Docker Desktop only — NOT used in the
+# real Ubuntu deployment (that's docker-compose.yml, unmodified).
+#
+# Two things only work on a real Linux host and are swapped out here:
+#   - network_mode: host          -> bridge + explicit port mapping
+#   - absolute /opt/serverdock/*  -> relative host paths Windows can mount
+#
+# Run with:
+#   docker compose -f docker-compose.yml -f docker-compose.windows-test.yml up -d --build
+services:
+  serverdock:
+    network_mode: !reset null
+    ports:
+      - "4000:4000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./.local-docker-test/games:/opt/serverdock/backend/games
+      - ./.local-docker-test/state:/opt/serverdock/backend/state

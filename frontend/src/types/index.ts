@@ -42,6 +42,50 @@ export interface Connection {
   port: number;
 }
 
+export interface ResourceAlert {
+  cpu: number;
+  memPct: number;
+  message: string;
+  since: string;
+}
+
+export interface CrashInfo {
+  exitCode: number | null;
+  oomKilled: boolean;
+  error: string | null;
+  at: string;
+}
+
+export interface ActionFailureInfo {
+  action: string;
+  message: string;
+  stack: string | null;
+  at: string;
+}
+
+export type ServerEventEntry =
+  | {
+      id: number;
+      type: 'resource_high';
+      data: { cpu: number; memPct: number; message: string };
+      createdAt: string;
+      resolvedAt: string | null;
+    }
+  | {
+      id: number;
+      type: 'crash';
+      data: { exitCode: number | null; oomKilled: boolean; error: string | null };
+      createdAt: string;
+      resolvedAt: string | null;
+    }
+  | {
+      id: number;
+      type: 'action_failed';
+      data: { action: string; message: string; stack: string | null };
+      createdAt: string;
+      resolvedAt: string | null;
+    };
+
 export interface Server {
   id: string;
   name: string;
@@ -53,6 +97,9 @@ export interface Server {
   imageBuilt?: boolean;
   players: number | null;
   playerList?: string | null;
+  resourceAlert?: ResourceAlert | null;
+  lastCrash?: CrashInfo | null;
+  actionFailure?: ActionFailureInfo | null;
   connection: Connection | null;
   pinnedEnv: EnvVar[];
   diskUsed?: number;

@@ -21,6 +21,7 @@ import {
   Stop,
   Terminal,
   Trash,
+  WarningDiamond,
   Wifi,
   X,
 } from 'pixelarticons/react';
@@ -39,9 +40,18 @@ import {
   gameHue,
   gameMark,
   storeLabel,
+  getActiveIssues,
 } from '../../../utils/serverStatus';
-import { fmtBytes } from '../../../utils/format';
-import type { Server, ServerStats, LogLine, PullProgress } from '../../../types';
+import { fmtBytes, timeAgo } from '../../../utils/format';
+import type {
+  Server,
+  ServerStats,
+  LogLine,
+  PullProgress,
+  ResourceAlert,
+  CrashInfo,
+  ActionFailureInfo,
+} from '../../../types';
 import { InfoTab } from './components/InfoTab';
 import { ConsoleTab } from './components/ConsoleTab';
 import { FilesTab } from './components/FilesTab';
@@ -234,6 +244,39 @@ export default function ServerDetail() {
       setServer((prev) => (prev ? { ...prev, players, playerList } : prev));
     }
 
+    // Sustained high CPU/memory — persists until usage normalizes; see
+    // statusBus.emitResourceAlert.
+    function onResourceUpdate({
+      id: rid,
+      alert,
+    }: {
+      id: string;
+      alert: ResourceAlert | null;
+    }) {
+      if (rid !== id) return;
+      setServer((prev) => (prev ? { ...prev, resourceAlert: alert } : prev));
+    }
+
+    // Last unexpected-exit info — persists until the next successful start
+    // (or a reset); see statusBus.emitCrashUpdate.
+    function onCrashUpdate({ id: cid, info }: { id: string; info: CrashInfo | null }) {
+      if (cid !== id) return;
+      setServer((prev) => (prev ? { ...prev, lastCrash: info } : prev));
+    }
+
+    // Failed start/restart attempt — persists until the next successful
+    // start; see statusBus.emitActionFailure.
+    function onActionFailureUpdate({
+      id: fid,
+      failure,
+    }: {
+      id: string;
+      failure: ActionFailureInfo | null;
+    }) {
+      if (fid !== id) return;
+      setServer((prev) => (prev ? { ...prev, actionFailure: failure } : prev));
+    }
+
     // Server-side streams die with the connection — re-join after a reconnect
     function onReconnect() {
       socket.emit('join:logs', { id });
@@ -242,6 +285,9 @@ export default function ServerDetail() {
 
     socket.on('status:update', onStatusUpdate);
     socket.on('players:update', onPlayersUpdate);
+    socket.on('resource:update', onResourceUpdate);
+    socket.on('crash:update', onCrashUpdate);
+    socket.on('action_failure:update', onActionFailureUpdate);
     socket.on('log:line', onLogLine);
     socket.on('log:history', onLogHistory);
     socket.on('log:end', onLogEnd);
@@ -254,6 +300,9 @@ export default function ServerDetail() {
     return () => {
       socket.off('status:update', onStatusUpdate);
       socket.off('players:update', onPlayersUpdate);
+      socket.off('resource:update', onResourceUpdate);
+      socket.off('crash:update', onCrashUpdate);
+      socket.off('action_failure:update', onActionFailureUpdate);
       socket.off('log:line', onLogLine);
       socket.off('log:history', onLogHistory);
       socket.off('log:end', onLogEnd);
@@ -363,6 +412,9 @@ export default function ServerDetail() {
   // Busy if this client has a request in flight, or any client/scheduler does
   const busy = !!actionLoading || IN_FLIGHT.includes(status);
 
+  const activeIssues = getActiveIssues(server, t);
+  const issuesColor = activeIssues.some((i) => i.severity === 'red') ? 'var(--red)' : 'var(--yellow)';
+
   const badgeLabel =
     status === 'pulling' && pull
       ? `${t(pull.phase === 'extracting' ? 'status.extracting' : 'status.pulling')} ${pull.percent}%`
@@ -464,6 +516,28 @@ export default function ServerDetail() {
         </div>
       )}
 
+      {/* ── Issues banner ────────────────────────────────────────────────── */}
+      {/* Every currently-active issue gets its own row — a crash and a failed
+          restart attempt (say) can both be active at once, and neither one
+          is hidden in favor of the other. */}
+      {activeIssues.length > 0 && (
+        <div
+          className="flex flex-col border-b border-line flex-none font-mono text-[11.5px]"
+          style={{
+            color: issuesColor,
+            background: `color-mix(in oklab, ${issuesColor} 8%, transparent)`,
+          }}
+        >
+          {activeIssues.map((issue) => (
+            <div key={issue.key} className="flex items-center gap-2 px-4 py-2">
+              <WarningDiamond width={13} height={13} className="shrink-0" />
+              <span className="flex-1 text-ink">{issue.text}</span>
+              <span className="shrink-0">{timeAgo(issue.since, t)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ── Resources panel ───────────────────────────────────────────────── */}
       {stats && (
         <div className="border-b border-line flex-none bg-bg-1">
@@ -482,24 +556,24 @@ export default function ServerDetail() {
             {!statsOpen && (
               <>
                 <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3">
-                  <Cpu width={11} height={11} /> <span className="text-ink">{stats.cpu.toFixed(1)}%</span>
+                  <Cpu width={12} height={12} /> <span className="text-ink">{stats.cpu.toFixed(1)}%</span>
                 </span>
                 <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3">
-                  <MemoryStick width={11} height={11} />
+                  <MemoryStick width={12} height={12} />
                   <span className="text-ink">
                     {fmtBytes(stats.memUsed)}
                     {stats.memLimit ? ` / ${fmtBytes(stats.memLimit)}` : ''}
                   </span>
                 </span>
                 <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3">
-                  <Wifi width={11} height={11} /> {t('serverDetail.resNet')}
-                  <ArrowDown width={11} height={11} />
+                  <Wifi width={12} height={12} /> {t('serverDetail.resNet')}
+                  <ArrowDown width={12} height={12} />
                   <span className="text-ink">{fmtBytes(stats.netInRate)}/s</span>
-                  <ArrowUp width={11} height={11} />
+                  <ArrowUp width={12} height={12} />
                   <span className="text-ink">{fmtBytes(stats.netOutRate)}/s</span>
                 </span>
                 <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3">
-                  <Database width={11} height={11} /> {t('serverDetail.resDisk')}{' '}
+                  <Database width={12} height={12} /> {t('serverDetail.resDisk')}{' '}
                   <span className="text-ink">{fmtBytes(server.diskUsed ?? 0)}</span>
                 </span>
               </>
@@ -510,7 +584,7 @@ export default function ServerDetail() {
             <div className="px-6 pt-1 pb-4 flex flex-col gap-3">
               <div className="flex items-center gap-3">
                 <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3 w-10 shrink-0">
-                  <Cpu width={11} height={11} /> CPU
+                  <Cpu width={12} height={12} /> CPU
                 </span>
                 <div className="flex-1 h-1.5 relative" style={{ background: 'var(--line-2)' }}>
                   <div
@@ -526,7 +600,7 @@ export default function ServerDetail() {
 
               <div className="flex items-center gap-3">
                 <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3 w-10 shrink-0">
-                  <MemoryStick width={11} height={11} /> RAM
+                  <MemoryStick width={12} height={12} /> RAM
                 </span>
                 {stats.memLimit ? (
                   <>
@@ -556,22 +630,22 @@ export default function ServerDetail() {
               </div>
 
               <div className="flex items-center gap-3">
-                <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3 w-10 shrink-0">
-                  <Wifi width={11} height={11} /> {t('serverDetail.resNet')}
+                <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3 shrink-0">
+                  <Wifi width={12} height={12} /> {t('serverDetail.resNet')}
                 </span>
                 <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3">
-                  <ArrowDown width={11} height={11} />
+                  <ArrowDown width={12} height={12} />
                   <span className="text-ink">{fmtBytes(stats.netInRate)}/s</span>
                 </span>
                 <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3">
-                  <ArrowUp width={11} height={11} />
+                  <ArrowUp width={12} height={12} />
                   <span className="text-ink">{fmtBytes(stats.netOutRate)}/s</span>
                 </span>
               </div>
 
               <div className="flex flex-row gap-3">
-                <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3 w-10 shrink-0">
-                  <Database width={11} height={11} /> {t('serverDetail.resDisk')}
+                <span className="inline-flex items-center gap-1 font-mono text-xs text-ink-3 shrink-0">
+                  <Database width={12} height={12} /> {t('serverDetail.resDisk')}
                 </span>
                 <span className="font-mono text-xs text-ink shrink-0">
                   {fmtBytes(server.diskUsed ?? 0)}

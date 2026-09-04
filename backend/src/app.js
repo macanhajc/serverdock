@@ -1,4 +1,7 @@
 import os from 'os';
+import { existsSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import express from 'express';
 import cors from 'cors';
 import logger from './lib/logger.js';
@@ -18,6 +21,9 @@ import dockerRoutes from './routes/docker.js';
 import { getGames } from './lib/gameLoader.js';
 import { isDockerAvailable } from './lib/docker.js';
 import { getHostDiskInfo } from './lib/diskUtils.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const FRONTEND_DIST = join(__dirname, '../../frontend/dist');
 
 // Builds the Express app (routes + middleware) without starting anything —
 // no listen(), no scheduler, no socket.io, no background jobs. Kept separate
@@ -67,6 +73,18 @@ export function createApp() {
       },
     });
   });
+
+  // Serves the built frontend when it's been built alongside the backend
+  // (the Docker image; a manual `npm run build`) — a no-op in dev, where
+  // Vite serves the frontend on its own port, and in tests, which never
+  // build a frontend. The regex excludes /api and /socket.io so unmatched
+  // API routes still 404 with JSON instead of getting index.html.
+  if (existsSync(FRONTEND_DIST)) {
+    app.use(express.static(FRONTEND_DIST));
+    app.get(/^(?!\/api|\/socket\.io).*/, (req, res) => {
+      res.sendFile(join(FRONTEND_DIST, 'index.html'));
+    });
+  }
 
   // Express v5 error middleware
   app.use((err, req, res, _next) => {

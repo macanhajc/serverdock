@@ -7,7 +7,13 @@ import { ServerCardSkeleton } from '../../../components/data/ServerCardSkeleton'
 import { LangSwitcher } from '../../../components/core/LangSwitcher';
 import { PageHeader } from '../../../components/core/PageHeader';
 import { HowToConnectModal } from './components/HowToConnectModal';
-import { toUiStatus, gameHue, gameMark, sortOnlineFirst } from '../../../utils/serverStatus';
+import {
+  toUiStatus,
+  gameHue,
+  gameMark,
+  sortOnlineFirst,
+  getDisplayPlayerCount,
+} from '../../../utils/serverStatus';
 import { timeAgo } from '../../../utils/format';
 import type { Server } from '../../../types';
 
@@ -214,9 +220,9 @@ export default function PublicDashboard() {
             status={toUiStatus(server.status)}
             players={
               server.playerList ? (
-                <span title={server.playerList}>{server.players ?? '—'}</span>
+                <span title={server.playerList}>{getDisplayPlayerCount(server) ?? '—'}</span>
               ) : (
-                (server.players ?? '—')
+                (getDisplayPlayerCount(server) ?? '—')
               )
             }
             connection={server.connection}

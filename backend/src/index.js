@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { randomBytes } from 'crypto';
 import webpush from 'web-push';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -35,6 +36,22 @@ await loadSettings();
   }
 }
 
+// Fall back to a generated, persisted JWT_SECRET when the operator hasn't
+// supplied one (e.g. a Docker install with no .env) — same generate-once-
+// and-reuse pattern as the VAPID keys above. An operator-supplied env var
+// always wins and is never touched here.
+if (!process.env.JWT_SECRET) {
+  const s = getSettings();
+  if (!s.generatedJwtSecret) {
+    const secret = randomBytes(32).toString('hex');
+    await saveSettings({ generatedJwtSecret: secret });
+    process.env.JWT_SECRET = secret;
+    logger.info('JWT_SECRET not set — generated and persisted one');
+  } else {
+    process.env.JWT_SECRET = s.generatedJwtSecret;
+  }
+}
+
 await migrateLegacyData();
 
 await loadGames();
@@ -43,7 +60,15 @@ initScheduler(getGames());
 const PORT = process.env.PORT ?? 4000;
 httpServer.listen(PORT, () => logger.info({ port: PORT }, 'ServerDock backend running'));
 
+// Some container runtimes redeliver SIGTERM repeatedly while waiting for a
+// process to exit (observed under Docker Desktop/WSL2) rather than sending
+// it once — without this guard, every redelivery re-entered shutdown() and
+// re-ran the async container-stop sweep concurrently with itself.
+let shuttingDown = false;
+
 async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
   logger.info({ signal }, 'shutdown received — stopping all serverdock containers');
   try {
     const containers = await docker.listContainers({ all: false });

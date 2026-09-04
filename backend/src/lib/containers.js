@@ -7,11 +7,13 @@ import {
   settleTransient,
   emitPullProgress,
   emitServerEvent,
+  emitActionFailure,
   getTransient,
   markAdminStop,
   clearAdminStop,
   hasAdminStop,
 } from './statusBus.js';
+import { setActionFailure } from './actionFailures.js';
 import { pushSystemLogLine } from './logBuffer.js';
 import logger from './logger.js';
 
@@ -170,6 +172,13 @@ async function reportActionFailure(id, action, err) {
   // Toasts dismiss on their own — leave the failure in the console too so it's
   // still visible if the admin opens the server detail page afterwards.
   pushSystemLogLine(id, `Failed to ${action} server: ${err.message}`, 'error');
+
+  // Persisted like resource/crash alerts (see actionFailures.js), but only
+  // for start/restart — see that module's comment for why the other actions
+  // are excluded. Includes the stack trace as a debugging aid.
+  if (action === 'start' || action === 'restart') {
+    emitActionFailure(id, setActionFailure(id, action, err));
+  }
 }
 
 export async function getContainerStatus(id) {

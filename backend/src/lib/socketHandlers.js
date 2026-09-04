@@ -4,6 +4,9 @@ import docker, { dockerEndpoint } from './docker.js';
 import { getGames } from './gameLoader.js';
 import { getEffectiveStatuses, getContainerExitInfo, sendStdinCommand } from './containers.js';
 import { queryA2S, getPlayers, setPlayers, getPlayerList, setPlayerList } from './playerQuery.js';
+import { getResourceAlert, setResourceAlert, clearResourceAlert } from './resourceAlerts.js';
+import { getLastCrash, setLastCrash, clearLastCrash } from './crashInfo.js';
+import { getActionFailure, clearActionFailure } from './actionFailures.js';
 import { attachStatsStream, detachStatsStream, computeCpuMem } from './statsStreams.js';
 import { sendRconCommand } from './rcon.js';
 import { sendCrashNotification, sendEventNotification } from './notifier.js';
@@ -20,6 +23,9 @@ import {
   emitDiskStatus,
   emitServerEvent,
   emitPlayers,
+  emitResourceAlert,
+  emitCrashUpdate,
+  emitActionFailure,
   consumeAdminStop,
   clearAdminStop,
 } from './statusBus.js';
@@ -190,12 +196,13 @@ async function checkDiskSpace() {
 
 // Resource usage alerts — requires two consecutive high readings (~2 min
 // sustained) before alerting, so a brief spike (e.g. a world autosave) doesn't
-// trigger a false alarm. One entry per game id owns both the streak count and
-// whether that game is currently in an alerted state.
+// trigger a false alarm. The alert itself (see resourceAlerts.js) persists
+// until usage normalizes, so it survives past the one-shot toast that
+// emitServerEvent triggers — the table row and detail page reflect it for as
+// long as the condition is ongoing, not just for the toast's lifetime.
 const RESOURCE_HIGH_PCT = 90;
 const RESOURCE_SUSTAINED_CHECKS = 2;
 const resourceHighStreak = new Map(); // gameId -> consecutive high-check count
-const resourceAlerted = new Set(); // gameId currently alerted
 
 async function checkResourceUsage(game) {
   let raw;
@@ -210,21 +217,23 @@ async function checkResourceUsage(game) {
 
   if (!high) {
     resourceHighStreak.delete(game.id);
-    if (resourceAlerted.delete(game.id)) {
+    if (clearResourceAlert(game.id)) {
       logger.info({ gameId: game.id }, 'resource usage recovered');
+      emitResourceAlert(game.id, null);
     }
     return;
   }
 
   const streak = (resourceHighStreak.get(game.id) ?? 0) + 1;
   resourceHighStreak.set(game.id, streak);
-  if (streak < RESOURCE_SUSTAINED_CHECKS || resourceAlerted.has(game.id)) return;
+  if (streak < RESOURCE_SUSTAINED_CHECKS || getResourceAlert(game.id)) return;
 
-  resourceAlerted.add(game.id);
   const detail =
     cpu > RESOURCE_HIGH_PCT ? `CPU at ${cpu.toFixed(0)}%` : `memory at ${memPct.toFixed(0)}%`;
+  const alert = setResourceAlert(game.id, { cpu, memPct, message: detail });
   logger.warn({ gameId: game.id, cpu, memPct }, 'sustained high resource usage');
   emitServerEvent({ type: 'resource_high', id: game.id, name: game.name, message: detail });
+  emitResourceAlert(game.id, alert);
   sendEventNotification('High Resource Usage', `${game.name}: ${detail}.`, game.id).catch(() => {});
 }
 
@@ -267,6 +276,29 @@ async function pollStatus(io) {
     try {
       const status = statuses.get(game.id) ?? 'not_created';
       const prev = getLastKnown(game.id);
+
+      // checkResourceUsage only runs for running games, so a stopped/reset
+      // server (or a stale unresolved row surviving a backend restart) would
+      // otherwise keep a stale alert forever — clear it here, every tick, as
+      // a standing invariant rather than only on the prev!==status transition
+      // below. That matters because containers.js's start/stop/restart/reset
+      // actions settle status via emitStatus() directly (see setTransient/
+      // settleTransient in statusBus.js) — by the time the poll's next tick
+      // runs, lastKnown already matches the new status, so prev !== status
+      // never fires for a transition the *action* itself already completed.
+      if (status !== 'running' && clearResourceAlert(game.id)) {
+        emitResourceAlert(game.id, null);
+      }
+      // Same reasoning applies to a stale crash record, and to a start/
+      // restart failure: a server that reaches running proves whatever was
+      // wrong before isn't happening anymore, whether or not the poll
+      // itself is the one that observed the transition into running (see
+      // comment above).
+      if (status === 'running') {
+        if (clearLastCrash(game.id)) emitCrashUpdate(game.id, null);
+        if (clearActionFailure(game.id)) emitActionFailure(game.id, null);
+      }
+
       // Query player count for running games with A2S configured
       if (status === 'running' && game.query?.type === 'a2s') {
         queryA2S(game.query.port)
@@ -298,6 +330,7 @@ async function pollStatus(io) {
         logger.info({ gameId: game.id, from: prev ?? 'unknown', to: status }, 'status change');
 
         // A server that reaches running resets any stale admin-stop intent
+        // (the crash record itself is already handled above, unconditionally)
         if (status === 'running') clearAdminStop(game.id);
 
         // Crash detection: an unexpected exit from running, or any entry into the
@@ -313,6 +346,7 @@ async function pollStatus(io) {
           const exitInfo = await getContainerExitInfo(game.id);
           sendCrashNotification(game, exitInfo).catch(() => {});
           emitCrashAlert({ id: game.id, name: game.name, status, exitInfo });
+          emitCrashUpdate(game.id, setLastCrash(game.id, exitInfo));
         }
 
         // Auto-attach the log stream when a container starts running and someone is watching
@@ -361,6 +395,9 @@ export function setupSocketHandlers(io) {
           status: statuses.get(game.id) ?? 'not_created',
           players: getPlayers(game.id),
           playerList: getPlayerList(game.id),
+          resourceAlert: getResourceAlert(game.id),
+          lastCrash: getLastCrash(game.id),
+          actionFailure: getActionFailure(game.id),
         }));
         socket.emit('status:all', snapshot);
         socket.emit('docker:status', { available: !dockerDown });

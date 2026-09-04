@@ -3,6 +3,7 @@ export { ConfirmModal } from './core/ConfirmModal';
 export { CopyButton } from './core/CopyButton';
 export { LangSwitcher } from './core/LangSwitcher';
 export { PageHeader } from './core/PageHeader';
+export { ServerIssuesBadge } from './core/ServerIssuesBadge';
 export { StatusBadge } from './core/StatusBadge';
 export { Toggle } from './core/Toggle';
 export { TextField } from './forms/TextField';

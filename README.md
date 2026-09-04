@@ -1,47 +1,78 @@
 # ServerDock
 
-Self-hosted game server manager. Admins control Docker game containers via a login-protected panel; friends see a read-only status dashboard. Runs on a single Ubuntu machine, VPN-gated, with no public internet exposure required.
+ServerDock is a self-hosted control panel for running game servers on your own machine, in Docker. One admin manages everything — creating servers, starting/stopping them, editing their files, scheduling restarts, watching logs — from a browser. Friends get a separate, read-only dashboard that shows who's online and how to connect, with no admin access and no account required beyond a display name.
+
+It's built for the "I have a spare machine and some friends" use case: a home server, a mini PC, a cheap VPS. There's no public-facing login, no exposed ports, and no HTTPS to configure — access is gated entirely by joining a private VPN mesh (NetBird), so the whole thing is designed to be reachable only by people you've actually invited.
 
 ---
 
 ## Screenshots
 
-| AdminDashboard | ServerDetails |
+| Admin Dashboard | Server Detail |
 |--|--|
 | <img width="1717" height="1320" alt="Screenshot From 2026-06-09 20-36-18" src="https://github.com/user-attachments/assets/127f3232-e9b7-44a9-a42d-3c9fdf435b81" /> | <img width="1717" height="1320" alt="Screenshot From 2026-06-09 20-36-47" src="https://github.com/user-attachments/assets/f10bca15-a5f7-4577-9f12-ec30a00a37c9" /> |
 
-| PublicDashboard |
+| Public Dashboard |
 |--|
 | <img width="1330" height="1320" alt="Screenshot From 2026-06-09 20-39-07" src="https://github.com/user-attachments/assets/6af40ec5-c192-4a67-9e40-1e6c74113848" /> |
 
+---
+
+## Getting Started
+
+**→ See [DEPLOYMENT.md](DEPLOYMENT.md) for installation.** It covers the recommended Docker install on Linux, an advanced Node/PM2/systemd path without Docker, and running ServerDock on Windows for local development or testing.
+
+Once it's running, using it looks like this:
+
+1. **First boot** shows a one-time setup screen to create your admin account — no config file editing, no CLI step.
+2. **Add a game** from the Dashboard using a built-in template (or start from a blank config for anything not templated) and click Start. Public-image games pull automatically; games with a Dockerfile build in-browser with a live log.
+3. **Invite friends** to your NetBird network (see the in-app "How to connect" guide on the public dashboard) — once they're on the mesh, the public dashboard at your server's address shows them live status and a copy-pasteable connect address for each server.
+4. **Manage from there**: console/RCON, live logs, file editing, backups, cron schedules, and — if you want help running things — additional admin accounts with hand-picked permissions.
+
+---
 
 ## Features
 
-- **Admin dashboard** — monitoring table with live CPU, RAM, network I/O, disk usage, and player count per server; global stats summary card at the top
-- **Server controls** — start, stop, restart, and reset any game server with one click; state-aware buttons prevent invalid actions
-- **Public dashboard** — friends see live server status and connection info without logging in
-- **Game templates** — built-in presets for Minecraft, Valheim, Terraria, Factorio, CS2, ARK, and Rust
-- **Custom Dockerfiles** — Steam-based games (CS2, ARK, Rust) build local images with SteamCMD; public images (Minecraft, Valheim, etc.) are pulled automatically on first start
-- **Live log streaming** — real-time container logs in the browser via WebSocket, with log-level color coding and level filter
-- **Interactive console** — send commands directly to a running container's stdin; full command history with arrow-key navigation
-- **RCON** — send RCON commands to supported game servers directly from the browser; switchable terminal/RCON mode in the console tab
-- **File manager** — browse and edit server data files (world saves, configs) directly in the UI
-- **Resource monitoring** — per-container CPU %, memory usage, and network I/O streamed live via Docker stats API; CPU sparklines on the server detail page
-- **Disk usage** — per-server game data size and host filesystem totals reported in both the dashboard and server detail view
-- **Backups** — create, download, restore, and delete compressed `.tar.gz` snapshots of a server's data directory from the Backups tab; a restore automatically stops and restarts the container if it was running
-- **Docker manager** — browse all Docker images and containers on the host; remove unused images or orphaned containers directly from the admin panel
-- **Scheduled actions** — cron-based scheduler per server: auto-start, stop, restart, or send RCON commands on a schedule; configurable timezone; enable/disable without deleting; manual "run now" button; last-run status shown inline
-- **A2S player count** — live player/max-player display for games that support the Valve Source Engine Query protocol (Valheim, CS2, ARK, Rust); configured via the `query` field in each game's JSON
-- **Pinned env vars** — mark any environment variable as pinned to surface its current value on the server card in both the admin and public dashboards
-- **Resource limits** — optional `cpuLimit` and `memoryLimit` fields in game JSON; limits shown alongside live usage in the dashboard and detail view
-- **VPN integration** — NetBird and WireGuard support; VPN IP is auto-detected and shown to friends as the connection address
-- **Visitor tracking** — friends register a username on the public dashboard; admin can see who has visited and remove access
-- **Settings panel** — admin can update `SERVER_HOST`, data root path, and toggle visitor self-registration without editing `.env`
-- **Discord notifications** — crash alerts posted to a Discord channel via webhook; configurable in the settings panel
-- **Browser push notifications** — Web Push (VAPID) crash alerts to any browser that has granted notification permission; admin subscribes/unsubscribes from the settings panel
-- **Toast notifications** — transient success/error toasts shown after actions
-- **i18n** — UI available in English and Portuguese (pt-BR)
-- **No database** — Docker is the source of truth for container state; game configs are JSON files on disk
+### Server management
+- Create, edit, start, stop, restart, and reset any game server; state-aware controls prevent invalid actions (e.g. no "start" on a server that's already running).
+- Live status/CPU/RAM/disk/network table across all servers, with a global fleet summary card, host OS/uptime info, and live NetBird peer count.
+- Add a game from a built-in template or a blank config; export any game's config (and Dockerfile, if it has one) as a portable JSON file, and import it on another instance.
+- Two image sources per game: **public** (pulled from a registry on first start) or **local** (built from an in-editor Dockerfile with a live build log — used for anything SteamCMD-based or otherwise custom).
+- On-demand image update check against the registry (no polling, to stay clear of Docker Hub rate limits) and a one-click rebuild for local images.
+- Optional CPU-core and memory limits per server, shown alongside live usage.
+
+### Console, RCON & files
+- Live-streaming log/console tab (color-coded by level, filterable, searchable) with a command input that writes directly to the container's stdin, full history with arrow-key recall.
+- A separate RCON mode in the same tab for games that support it — its own request/response history and a configurable quick-broadcast field — gated behind its own permission since it's equivalent to console access.
+- Full in-browser file manager for each server's data directory: browse, create, rename, delete, upload, download, and edit (with syntax highlighting for JSON/YAML/properties-style files). Sandboxed to the data directory, path-traversal-proof, and only unlocked while the server is stopped.
+
+### Backups & scheduling
+- One-click `.tar.gz` backups with optional labels, download, restore (auto stop/restart around the swap), delete, and a configurable keep-last-N retention policy.
+- Per-server cron schedules for start, stop, restart, backup, or an arbitrary console command, with per-schedule timezone, enable/disable, "run now," and last-run status.
+
+### Multi-admin & permissions
+- A first admin is created via the one-time setup screen; a `super_admin` can then create additional admins and grant each one a hand-picked set of permissions (server power, file writes, backups, console access, game management, visitor management, schedules, settings) rather than all-or-nothing access.
+- Every mutating action is enforced server-side against the live permission set — the UI hides controls a given admin can't use, but the backend is the actual boundary.
+
+### Visitors & VPN access
+- Friends self-register a display name on the public dashboard (no password) and see live server status and connect info; the admin can view, block, or remove any visitor, and IP blocks persist even if the visitor row is later deleted.
+- Built on [NetBird](https://netbird.io): the public dashboard walks new visitors through installing it, joining your mesh, and connecting — after that, joining a server is copy-paste. The host's own VPN IP is auto-detected and used as the connect address; a manual fallback IP is available in Settings for hosts without NetBird.
+
+### Notifications
+- Discord webhook and browser Web Push (VAPID) notifications for unexpected server exits (with crash detail), failed scheduled actions, sustained high CPU/RAM usage (2+ minutes over 90%, to avoid noise from brief spikes), and low host disk space.
+
+### Setup & extensibility
+- First-run web-based admin setup — no CLI, no manually generated secrets (a `JWT_SECRET` is auto-generated and persisted if you don't supply one).
+- A raw Docker inventory page (images/containers on the host, including anything not managed by ServerDock) for cleanup.
+- Two languages out of the box (English, Portuguese), a dark terminal-inspired UI, and toast notifications for action feedback.
+
+---
+
+## Games included out of the box
+
+7 Days to Die · Abiotic Factor · Enshrouded · HumanitZ · Minecraft · Minecraft (Modded) · Palworld · Project Zomboid · Valheim · VintageStory · V Rising
+
+Anything else can be added as a blank config with a public Docker image, or with a custom Dockerfile for SteamCMD-based servers — see [Game Config Format](#game-config-format) below.
 
 ---
 
@@ -49,210 +80,28 @@ Self-hosted game server manager. Admins control Docker game containers via a log
 
 | Layer | Technology |
 |---|---|
-| Backend | Node.js + Express 5 (port 4000) |
-| Frontend | React 19 + Vite + Tailwind CSS v4 (dark theme, port 3000) |
-| Docker control | `dockerode` via `/var/run/docker.sock` |
-| Real-time | `socket.io` (same port as backend) |
-| Auth | JWT (24 h) + bcrypt |
-| Game config | JSON files in `backend/games/<id>/` |
-| VPN | NetBird (default) or WireGuard |
-| Notifications | Web Push (VAPID) + Discord webhooks |
+| Backend | Node.js + Express 5.2 (port 4000) |
+| Frontend | React 19.2 + Vite 8 + Tailwind CSS 4.3 (dark theme) |
+| Docker control | `dockerode` 5.0 via `/var/run/docker.sock` |
+| Real-time | `socket.io` 4.8 (same port as the API) |
+| Auth | JWT (24h) + bcrypt; roles & granular permissions in SQLite |
+| App database | SQLite (`better-sqlite3` 13.0) — admins, permissions, visitors, IP blocklist, bounded event history |
+| Game config | JSON files, one per game, under `backend/games/<id>/` |
+| File editor | CodeMirror (`@uiw/react-codemirror`) |
+| Scheduler | `node-cron` 4.2 |
+| Images | `sharp` 0.35 (avatar processing) |
+| Notifications | Web Push (`web-push` 3.6) + Discord webhooks |
+| i18n | `i18next` / `react-i18next` — English + Portuguese |
 
 ---
 
-## Prerequisites
+## How it works
 
-- **Node.js 18+** (tested on 24 LTS)
-- **Docker Engine** — the user running the backend must have access to `/var/run/docker.sock`
-- **NetBird** (or WireGuard) for VPN-gated friend access — optional, but required for friends to connect
-
-```bash
-# Add your user to the docker group so the backend can reach the socket
-sudo usermod -aG docker $USER
-newgrp docker
-```
-
----
-
-## Installation
-
-```bash
-git clone <repo-url> /opt/serverdock
-cd /opt/serverdock
-
-cd backend && npm install
-cd ../frontend && npm install
-```
-
----
-
-## Configuration
-
-### Backend `.env`
-
-Create `backend/.env`:
-
-```env
-PORT=4000
-JWT_SECRET=<generate a strong random secret>
-SERVER_HOST=192.168.1.10      # fallback IP shown to friends if VPN is not active
-CORS_ORIGIN=http://192.168.1.10:3000
-VPN_PROVIDER=netbird          # or 'wireguard'
-```
-
-Generate a secret:
-
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
-
-### Admin credentials
-
-Run once to set the admin username and password:
-
-```bash
-cd backend
-node setup-auth.js --username admin --password <your-password>
-```
-
-This writes a bcrypt hash to `backend/auth.json`. Re-run at any time to change credentials.
-
----
-
-## Running
-
-### Development
-
-```bash
-# Terminal 1 — backend (auto-reloads with nodemon)
-cd backend && npm run dev
-
-# Terminal 2 — frontend (Vite dev server)
-cd frontend && npm run dev
-```
-
-Open `http://localhost:5173` for the public dashboard or `http://localhost:5173/auth` for the admin login.
-
-### Production with PM2
-
-```bash
-# Build the frontend
-cd frontend && npm run build
-
-# Serve frontend/dist/ via nginx or any static file server, then:
-cd /opt/serverdock
-pm2 start ecosystem.config.cjs --env production
-pm2 save
-pm2 startup   # follow the printed command to enable auto-start on boot
-```
-
-### Production with systemd
-
-```bash
-sudo cp serverdock.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now serverdock
-sudo journalctl -u serverdock -f   # follow logs
-```
-
----
-
-## Adding a game server
-
-1. Open the admin panel → **Dashboard** → click **+ Add Game** or navigate to `/admin/servers/new`
-2. Pick a template (Minecraft, Valheim, CS2, ARK, Rust, Terraria, Factorio) or start blank
-3. Set a name, ports, and environment variables
-4. For Steam/custom games: the Dockerfile is pre-filled — click **Save & Build** and wait for the build to finish
-5. For public-image games (Minecraft, Valheim, etc.) the image is pulled automatically on first start
-6. Click **Start**
-
-Game data is persisted in `backend/games/<id>/data/` and mounted into the container at the path specified by the `dataMount` field in each game's JSON (e.g. `/data`, `/config`, `/palworld` — check the template for the correct value).
-
----
-
-## Directory Structure
-
-```
-serverdock/
-├── backend/
-│   ├── src/
-│   │   ├── index.js               # Express + Socket.IO entry point
-│   │   ├── middleware/auth.js      # JWT verification middleware
-│   │   ├── routes/
-│   │   │   ├── auth.js            # POST /api/auth/login|logout
-│   │   │   ├── servers.js         # GET|POST /api/servers
-│   │   │   ├── games.js           # CRUD /api/games (admin only)
-│   │   │   ├── files.js           # File manager /api/files (admin only)
-│   │   │   ├── schedules.js       # Cron schedules /api/schedules (admin only)
-│   │   │   ├── backups.js         # Backup CRUD /api/backups (admin only)
-│   │   │   ├── docker.js          # Docker image/container management /api/docker
-│   │   │   ├── visitors.js        # Visitor tracking /api/visitors
-│   │   │   ├── push.js            # Web Push subscriptions /api/push
-│   │   │   ├── vpn.js             # VPN status /api/vpn/status
-│   │   │   └── settings.js        # Admin settings /api/settings
-│   │   └── lib/
-│   │       ├── backupManager.js   # tar.gz backup creation, restore, list, and delete
-│   │       ├── containers.js      # Docker start/stop/restart/reset helpers
-│   │       ├── diskUtils.js       # Directory size + host filesystem info
-│   │       ├── docker.js          # Dockerode client singleton + availability check
-│   │       ├── gameLoader.js      # Loads game JSON configs from disk
-│   │       ├── logger.js          # Pino structured logger
-│   │       ├── notifier.js        # Discord webhook + Web Push crash notifications
-│   │       ├── playerQuery.js     # A2S (Valve Source Engine Query) player count
-│   │       ├── rcon.js            # RCON command sender (rcon-client)
-│   │       ├── scheduler.js       # node-cron job runner for per-game schedules
-│   │       ├── settingsStore.js   # Persistent settings (settings.json)
-│   │       ├── socket.js          # Socket.io server setup
-│   │       ├── socketHandlers.js  # WebSocket rooms (logs, build, stats, console, status)
-│   │       ├── statsStreams.js     # Docker stats stream manager (CPU/mem/net)
-│   │       ├── visitorStore.js    # Visitor persistence (visitors.json)
-│   │       └── vpn/               # NetBird + WireGuard adapters
-│   ├── games/                     # One subfolder per game
-│   │   └── <id>/
-│   │       ├── <id>.json          # Game definition (image, ports, env vars, schedules)
-│   │       ├── data/              # Server data volume (world saves, configs)
-│   │       └── Dockerfile         # Only for local/Steam-based games
-│   ├── auth.json                  # Bcrypt-hashed admin credentials
-│   ├── setup-auth.js              # One-time credential setup script
-│   └── .env
-└── frontend/
-    └── src/
-        ├── pages/
-        │   ├── public/
-        │   │   ├── Dashboard/         # Read-only status view for friends
-        │   │   └── Blocked/           # Shown when visitor registration is closed
-        │   ├── auth/                  # Login page
-        │   └── private/
-        │       ├── Dashboard/         # Admin monitoring table + global stats card
-        │       ├── ServerDetail/      # Per-server detail with tabs:
-        │       │   ├── InfoTab        #   Info, connection, ports, uptime, resources
-        │       │   ├── LogsTab        #   Live log stream with level filter
-        │       │   ├── ConsoleTab     #   Interactive terminal + RCON mode
-        │       │   ├── FilesTab       #   File browser and editor
-        │       │   ├── ScheduleTab    #   Cron schedule management
-        │       │   └── BackupTab      #   Backup create, restore, download, delete
-        │       ├── GameForm/          # Create / edit game config + Dockerfile
-        │       ├── DockerPage/        # Docker image and container manager
-        │       ├── NetworkPage/       # VPN status and connected peers
-        │       ├── VisitorsPage/      # Visitor management
-        │       └── SettingsPage/      # Admin settings (host, data root, registration,
-        │                              #   Discord webhook, push notifications)
-        ├── components/
-        │   ├── core/                  # Button, ConfirmModal, CopyButton, LangSwitcher,
-        │   │                          #   PageHeader, StatusBadge, Toggle
-        │   ├── forms/                 # TextField, SegmentedControl
-        │   ├── navigation/            # SidebarNav, Tabs
-        │   └── data/                  # AdminServerCard, ServerCard, LogLine
-        ├── context/
-        │   ├── AuthContext.tsx        # JWT state + sessionStorage (key: sd_token)
-        │   └── ToastContext.tsx       # App-wide toast notifications
-        ├── data/templates.ts          # Built-in game presets
-        ├── socket.ts                  # Socket.io client singleton
-        ├── i18n.ts                    # i18next setup
-        └── locales/
-            ├── en.json
-            └── pt-BR.json
-```
+- **Docker is the source of truth for container/image state.** ServerDock never caches "is this server running" — it asks the Docker daemon. Game *configuration* (ports, env vars, images, schedules) lives in JSON files under `backend/games/<id>/`, one folder per game; only auth/permissions/visitors/blocklist and a small, capped table of resource/crash/action-failure events live in SQLite.
+- **Roles are `super_admin` (everything, always) and `admin` (nothing until granted).** A plain admin has zero capabilities until a super_admin checks permissions for them from a fixed catalog. Every mutating API route checks permissions fresh on each request, so a revoked grant takes effect immediately — it's not baked into the login token.
+- **Containers are named `serverdock-<id>`**, run with no restart policy (only explicit admin action starts/stops them), and get explicit DNS (`1.1.1.1`/`8.8.8.8` by default) so they resolve mod/update servers correctly even on hosts where the local resolver isn't reachable from inside a container.
+- **No HTTPS by design.** The VPN tunnel is the security boundary — nothing is meant to be reachable from the open internet. Don't expose ServerDock's port publicly.
+- **Real-time UI updates** ride on a handful of Socket.IO rooms rather than polling: live status for everyone, and JWT-gated log/build/stats streams for the admin panel. See [WebSocket Rooms](#websocket-rooms).
 
 ---
 
@@ -262,135 +111,85 @@ serverdock/
 
 | Field | Required | Description |
 |---|---|---|
-| `id` | ✅ | Unique slug. Lowercase, no spaces. Used in container names, API routes, folder names. |
+| `id` | ✅ | Unique slug. Lowercase, no spaces. Used in container names, API routes, and the folder name — cannot be changed after creation. |
 | `name` | ✅ | Display name |
-| `description` | ❌ | Short text shown in UI |
+| `description` | ❌ | Short text shown in the UI |
 | `imageSource` | ✅ | `"public"` or `"local"` |
-| `image` | ✅ | Docker Hub image (public) or local tag `serverdock-<id>` (local) |
-| `buildContext` | ✅ if local | Path to Dockerfile folder, relative to backend root |
-| `imageBuilt` | ✅ if local | `true` once built successfully; `false` otherwise |
+| `image` | ✅ | Registry image (public) or local tag `serverdock-<id>` (local) |
 | `ports` | ✅ | Array of `{ host, container, protocol }` |
-| `environment` | ❌ | Array of `{ key, value, pinned? }` — set `pinned: true` to surface the value on server cards |
+| `environment` | ❌ | Array of `{ key, value, pinned? }` — `pinned: true` surfaces the value on the server card in both dashboards |
 | `dataMount` | ❌ | Container path where `backend/games/<id>/data/` is mounted (default `/data`) |
-| `cpuLimit` | ❌ | CPU quota as a fractional number of cores (e.g. `2.0` = 2 full cores) |
-| `memoryLimit` | ❌ | Memory limit in MB (e.g. `4096` = 4 GB). Shown alongside live usage in dashboard. |
-| `query` | ❌ | `{ type: "a2s", port: <n> }` — enables live player count via Valve Source Engine Query |
-| `rcon` | ❌ | `{ enabled, port, password }` — enables in-browser RCON console |
-| `schedules` | ❌ | Array of schedule objects (managed via the UI; do not edit by hand) |
+| `cpuLimit` | ❌ | CPU quota as a fractional core count (e.g. `2.0` = 2 full cores) |
+| `memoryLimit` | ❌ | Memory limit in MB |
+| `query` | ❌ | `{ type: "a2s", port: <n> }` — enables the live player count via the Valve Source Engine Query protocol |
+| `rcon` | ❌ | `{ enabled, port, password, listCommand?, commands: { broadcast? } }` — enables the in-browser RCON console; `port` must also appear in `ports` |
+| `schedules` | ❌ | Managed via the Schedule tab — don't hand-edit |
 
 ---
 
 ## API Reference
 
-### Public endpoints (no auth required)
+All protected routes take `Authorization: Bearer <token>`; most also require a specific permission (see [How it works](#how-it-works)). This is a summary — see the route files under `backend/src/routes/` for full request/response shapes.
 
-| Method | Endpoint | Description |
+### Public (no auth)
+
+| Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/api/health` | Docker connectivity check + host info |
-| `GET` | `/api/servers` | All servers with live status, disk usage, and uptime |
-| `GET` | `/api/servers/:id` | Single server status + connection info |
-| `POST` | `/api/auth/login` | Obtain JWT |
+| `GET` | `/api/health` | Docker connectivity + host info |
+| `GET` | `/api/servers` | All servers — status, players, disk usage, uptime |
+| `GET` | `/api/servers/:id` | Single server status |
+| `GET` | `/api/servers/:id/avatar` | Server cover image |
+| `POST` | `/api/auth/login` | Obtain a JWT |
+| `GET` | `/api/auth/setup-status` | Whether first-run setup is still needed |
+| `POST` | `/api/auth/setup` | One-time: create the first admin (fails once one exists) |
 | `POST` | `/api/visitors/identify` | Register or re-identify a visitor |
-| `GET` | `/api/settings/public` | Public settings (e.g. `registrationOpen` flag) |
-| `GET` | `/api/push/vapid-public-key` | VAPID public key for push subscription |
+| `GET` | `/api/settings/public` | Public settings (e.g. is registration open) |
+| `GET` | `/api/push/vapid-public-key` | VAPID key for push subscription |
 
-### Protected endpoints (`Authorization: Bearer <token>`)
+### Authenticated
 
-| Method | Endpoint | Description |
+| Method | Endpoint | Purpose |
 |---|---|---|
-| `POST` | `/api/servers/:id/start` | Start server |
-| `POST` | `/api/servers/:id/stop` | Stop server |
-| `POST` | `/api/servers/:id/restart` | Restart server |
-| `POST` | `/api/servers/:id/reset` | Wipe data and remove container |
-| `POST` | `/api/servers/:id/rcon` | Send an RCON command; returns `{ response }` |
-| `GET` | `/api/games` | List all game configs |
-| `POST` | `/api/games` | Create a new game |
-| `PUT` | `/api/games/:id` | Update a game config |
-| `DELETE` | `/api/games/:id` | Delete a game (must be stopped) |
-| `POST` | `/api/games/:id/dockerfile` | Save a custom Dockerfile |
-| `POST` | `/api/games/:id/build` | Trigger a Docker image build |
-| `GET` | `/api/files/:id` | List directory entries |
-| `GET` | `/api/files/:id/read` | Read a file |
-| `PUT` | `/api/files/:id/write` | Write a file |
-| `GET` | `/api/schedules/:id` | List cron schedules for a game |
-| `POST` | `/api/schedules/:id` | Create a schedule |
-| `PUT` | `/api/schedules/:id/:scheduleId` | Update a schedule |
-| `DELETE` | `/api/schedules/:id/:scheduleId` | Delete a schedule |
-| `POST` | `/api/schedules/:id/:scheduleId/run` | Trigger a schedule immediately |
-| `GET` | `/api/backups/:id` | List backups for a server |
-| `POST` | `/api/backups/:id` | Create a backup |
-| `GET` | `/api/backups/:id/:backupId/download` | Download backup archive (also accepts `?token=` for direct browser links) |
-| `POST` | `/api/backups/:id/:backupId/restore` | Restore a backup (stops/restarts container if running) |
-| `DELETE` | `/api/backups/:id/:backupId` | Delete a backup |
-| `GET` | `/api/docker/images` | List all Docker images on the host |
-| `DELETE` | `/api/docker/images/:id` | Remove a Docker image |
-| `GET` | `/api/docker/containers` | List all Docker containers on the host |
-| `DELETE` | `/api/docker/containers/:id` | Force-remove a Docker container |
-| `GET` | `/api/vpn/status` | VPN status and peer list |
-| `GET` | `/api/visitors` | List all visitors |
-| `DELETE` | `/api/visitors/:id` | Remove a visitor |
-| `GET` | `/api/settings` | Get admin settings |
-| `PUT` | `/api/settings` | Update settings |
-| `POST` | `/api/push/subscribe` | Register a browser push subscription |
-| `DELETE` | `/api/push/subscribe` | Remove a push subscription |
-| `POST` | `/api/push/test` | Send a test push notification |
+| `POST` | `/api/auth/logout` / `GET` `/api/auth/me` | Revoke session / who am I |
+| `POST` | `/api/servers/:id/start` \| `/stop` \| `/restart` \| `/reset` | Lifecycle actions |
+| `POST` | `/api/servers/:id/rcon` | Send an RCON command |
+| `GET` | `/api/servers/:id/events` | Resource/crash/action-failure history |
+| `GET`/`POST`/`PUT`/`DELETE` | `/api/games[/:id]` | List / create / update / delete a game |
+| `GET` | `/api/games/:id/export` · `POST /api/games/import` | Portable config export/import |
+| `POST` | `/api/games/:id/check-update` | Compare local image digest vs. registry |
+| `GET`/`POST` | `/api/games/:id/dockerfile` | Read/save a custom Dockerfile |
+| `POST` | `/api/games/:id/build` | Build the local image |
+| `POST`/`DELETE` | `/api/games/:id/avatar` | Upload/remove cover image |
+| `GET`/`GET`/`GET`/`POST`/`PUT`/`PATCH`/`DELETE` | `/api/files/:id[/read\|/download\|/mkdir\|/upload\|/write\|/rename\|/delete]` | File manager |
+| `GET`/`POST`/`PUT`/`DELETE`/`POST` | `/api/schedules/:id[/:scheduleId][/run]` | Cron schedule CRUD + manual trigger |
+| `GET`/`POST`/`PUT`/`POST`/`DELETE` | `/api/backups/:id[/retention][/:backupId][/download][/restore]` | Backup CRUD + restore |
+| `GET`/`DELETE` | `/api/docker/images[/:id]` · `/api/docker/containers[/:id]` | Raw Docker inventory cleanup |
+| `GET`/`DELETE`/`PATCH`/`DELETE` | `/api/visitors[/:id][/block\|/unblock]` · `/api/visitors/blocklist[/:ip]` | Visitor + blocklist management |
+| `GET`/`PUT`/`POST`/`POST` | `/api/settings` · `/notify/test-discord` · `/wipe-all` | Settings, Discord test, factory reset |
+| `POST`/`DELETE`/`POST` | `/api/push/subscribe` · `/test` | Push subscription management |
+| `GET`/`GET`/`POST`/`PATCH`/`PATCH`/`DELETE` | `/api/admins[/permissions][/:id][/me/password][/:id/password]` | Admin roster & permissions — `super_admin` only, except self password change |
+| `GET`/`GET`/`DELETE` | `/api/vpn/status` | VPN self/peer status |
 
-### WebSocket rooms
+### WebSocket Rooms
 
 | Room | Auth | Purpose |
 |---|---|---|
 | `status` | Public | Live server status broadcasts |
-| `logs:<id>` | JWT | Container log stream |
-| `console:<id>` | JWT | Interactive console (stdin/stdout) |
+| `logs:<id>` | JWT | Container log stream — also carries console output; input is sent via a `console:input` event, not a room |
 | `build:<id>` | JWT | Docker image build output |
-| `stats:<id>` | JWT | Live CPU, memory, and network I/O stats |
-
----
-
-## Container Lifecycle
-
-Containers are named `serverdock-<id>` and use `RestartPolicy: no` — they only start or stop on explicit admin action. When the backend shuts down (`SIGINT`/`SIGTERM`), it gracefully stops all running managed containers. If a container stops unexpectedly (detected by the 30-second polling loop), a crash notification is sent via Discord webhook and/or browser push.
-
-**States:** `not_created` · `running` · `stopped` · `starting` · `restarting` · `pulling` · `building`
-
----
-
-## Scheduler
-
-Each game can have multiple cron schedules, stored in the game's JSON file under a `schedules` array. Schedules are managed via the **Schedule** tab on the server detail page.
-
-**Actions:** `start` · `stop` · `restart` · `command` (sends to container stdin or RCON)
-
-**Fields per schedule:**
-
-| Field | Description |
-|---|---|
-| `label` | Human-readable name shown in the UI |
-| `action` | `start`, `stop`, `restart`, or `command` |
-| `command` | Command string (required when action is `command`) |
-| `cron` | Standard 5-field cron expression (e.g. `0 4 * * *`) |
-| `timezone` | IANA timezone (e.g. `America/Sao_Paulo`); optional, defaults to server local time |
-| `enabled` | Toggle without deleting |
-| `lastRun` | Set automatically: `{ at: <iso>, ok: <bool> }` |
-
----
-
-## Notifications
-
-### Discord
-
-Set `discordWebhookUrl` in the settings panel. A crash embed is posted whenever a managed container stops unexpectedly.
-
-### Browser Push (Web Push / VAPID)
-
-VAPID keys are generated automatically on first backend start and stored in `settings.json`. The admin enables push in the settings panel; the browser prompts for notification permission. Crash notifications are sent to all subscribed browsers. Expired subscriptions are pruned automatically.
+| `stats:<id>` | JWT | Live CPU/memory/network stats for one server |
 
 ---
 
 ## Security Notes
 
-- Access is VPN-gated at the network level. Do not expose ports 3000 or 4000 to the public internet.
-- The JWT is stored in `sessionStorage` (cleared when the tab closes) — never `localStorage`.
-- Login attempts are rate-limited to prevent brute-force.
-- The file manager is sandboxed to each game's `data/` directory. Path traversal attempts return 403. Binary files are rejected. Max editable file size is 512 KB. Writes are atomic (`.tmp` → rename).
+- Access is meant to be VPN-gated at the network level — don't expose ServerDock's port to the public internet.
+- The JWT lives in `sessionStorage` (cleared when the tab closes), never `localStorage`.
+- Login and first-run setup are both rate-limited.
+- Granular permissions are checked fresh on every request, not baked into the login token — revoking one takes effect immediately.
+- The file manager is sandboxed to each game's `data/` directory, rejects path traversal and binary files, caps edits at 512 KB, and writes atomically.
 - No HTTPS — the VPN tunnel handles encryption.
+
+---
+
+For architecture notes aimed at contributors/AI coding agents (data model, invariants, "what not to do"), see [CLAUDE.md](CLAUDE.md).

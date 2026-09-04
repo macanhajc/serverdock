@@ -1,0 +1,17 @@
+**/node_modules
+**/.git
+**/*.log
+
+backend/games/*/data
+backend/games/*/backups
+backend/serverdock.db
+backend/serverdock.db-wal
+backend/serverdock.db-shm
+backend/settings.json
+backend/.env
+backend/coverage
+
+frontend/dist
+frontend/coverage
+
+.claude
