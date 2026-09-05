@@ -11,22 +11,78 @@
     "port": 27015
   },
   "ports": [
-    { "host": 7777, "container": 7777, "protocol": "udp" },
-    { "host": 7777, "container": 7777, "protocol": "tcp" },
-    { "host": 7778, "container": 7778, "protocol": "udp" },
-    { "host": 7778, "container": 7778, "protocol": "tcp" },
-    { "host": 7779, "container": 7779, "protocol": "udp" },
-    { "host": 7779, "container": 7779, "protocol": "tcp" },
-    { "host": 27015, "container": 27015, "protocol": "udp" },
-    { "host": 27015, "container": 27015, "protocol": "tcp" }
+    {
+      "host": 7776,
+      "container": 7776,
+      "protocol": "udp"
+    },
+    {
+      "host": 7776,
+      "container": 7776,
+      "protocol": "tcp"
+    },
+    {
+      "host": 7778,
+      "container": 7778,
+      "protocol": "udp"
+    },
+    {
+      "host": 7778,
+      "container": 7778,
+      "protocol": "tcp"
+    },
+    {
+      "host": 7779,
+      "container": 7779,
+      "protocol": "udp"
+    },
+    {
+      "host": 7779,
+      "container": 7779,
+      "protocol": "tcp"
+    },
+    {
+      "host": 27015,
+      "container": 27015,
+      "protocol": "udp"
+    },
+    {
+      "host": 27015,
+      "container": 27015,
+      "protocol": "tcp"
+    }
   ],
   "environment": [
-    { "key": "GAMEPORT", "value": "7777", "pinned": false },
-    { "key": "QUERYPORT", "value": "27015", "pinned": false },
-    { "key": "MAXPLAYERS", "value": "32", "pinned": false },
-    { "key": "ADDITIONALFLAGS", "value": "", "pinned": false },
-    { "key": "MEMORY_THRESHOLD_PERCENT", "value": "95", "pinned": false },
-    { "key": "MEMORY_CHECK_INTERVAL", "value": "60", "pinned": false }
+    {
+      "key": "GAMEPORT",
+      "value": "7776",
+      "pinned": false
+    },
+    {
+      "key": "QUERYPORT",
+      "value": "27015",
+      "pinned": false
+    },
+    {
+      "key": "MAXPLAYERS",
+      "value": "32",
+      "pinned": false
+    },
+    {
+      "key": "ADDITIONALFLAGS",
+      "value": "",
+      "pinned": false
+    },
+    {
+      "key": "MEMORY_THRESHOLD_PERCENT",
+      "value": "95",
+      "pinned": false
+    },
+    {
+      "key": "MEMORY_CHECK_INTERVAL",
+      "value": "60",
+      "pinned": false
+    }
   ],
   "resources": {
     "cpuLimit": null,
@@ -34,5 +90,6 @@
   },
   "rcon": {
     "enabled": false
-  }
+  },
+  "schedules": []
 }

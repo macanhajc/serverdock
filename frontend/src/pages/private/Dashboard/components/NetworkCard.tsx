@@ -47,9 +47,12 @@ export function NetworkCard({ status, loaded, navigate }: NetworkCardProps) {
       onClick={() => navigate('/admin/network')}
     >
       <div className="flex flex-wrap items-center gap-8">
-        <div className="flex items-center gap-2 shrink-0">
-          <StatusDot online={!isDown} />
-          <span className="font-mono text-base text-ink font-semibold">{providerMeta.label}</span>
+        <div>
+          <span className="font-mono text-[11px] text-ink-3 uppercase tracking-wider">PROVIDER</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <StatusDot online={!isDown} />
+            <span className="font-mono text-base text-ink font-semibold">{providerMeta.label}</span>
+          </div>
         </div>
 
         {isManual ? (

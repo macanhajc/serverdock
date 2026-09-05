@@ -48,7 +48,7 @@ export function ServersTable({
     <div
       ref={tableScrollRef}
       onScroll={handleTableScroll}
-      className="border flex flex-1 border-line bg-bg-1 overflow-x-auto"
+      className="border flex border-line bg-bg-1 overflow-x-auto"
     >
      <table
         className="border-collapse text-left"
@@ -82,8 +82,8 @@ export function ServersTable({
             ].map((col, i) => (
               <th
                 key={col}
-                className={`px-4 py-2.5 border-b border-line-2 font-mono text-sm font-normal last:border-r-0 text-ink-3 uppercase tracking-wider sticky top-0 z-20 ${
-                  i === 0 ? ' left-0 z-30 transition-shadow' : ''
+                className={`px-4 py-2.5 border-b border-line-2 font-mono text-xs font-normal last:border-r-0 text-ink-3 uppercase tracking-wider sticky top-0 z-20 ${
+                  i === 0 ? 'bg-bg left-0 z-30 transition-shadow' : ''
                 }`}
               >
                 {col}
@@ -92,7 +92,7 @@ export function ServersTable({
           </tr>
         </thead>
         <tbody>
-          {!loaded && [1, 2, 3].map((i) => <MonitoringRowSkeleton key={i} />)}
+          {!loaded && [1, 2, 3,4,5,6,7,8].map((i) => <MonitoringRowSkeleton key={i} />)}
 
           {loaded &&
             sortOnlineFirst(servers).map((server) => (

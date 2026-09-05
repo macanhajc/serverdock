@@ -3,6 +3,7 @@
 @theme {
   --color-bg: var(--bg);
   --color-bg-sidebar: var(--bg-sidebar);
+  --color-bg-0: var(--bg-0);
   --color-bg-1: var(--bg-1);
   --color-bg-2: var(--bg-2);
   --color-bg-3: var(--bg-3);
@@ -35,6 +36,7 @@
   /* Surfaces */
   --bg: #0a0b0e;
   --bg-sidebar: #0b0d12;
+  --bg-0: #14161d;
   --bg-1: #12151c;
   --bg-2: #181c26;
   --bg-3: #1c202b;
@@ -46,8 +48,8 @@
 
   /* Ink */
   --ink: #f1f5f9;
-  --ink-2: #94a3b8;
-  --ink-3: #525e75;
+  --ink-2: #cacbcc;
+  --ink-3: #a8a8a8;
 
   /* Accent */
   --accent: #06b6d4;
