@@ -16,7 +16,7 @@ Nothing to install on the host except Docker itself — no Node/npm, no nginx, n
 
 ### Prerequisites
 
-An Ubuntu machine with [Docker Engine](https://docs.docker.com/engine/install/) and the Compose plugin installed, and (optionally, for friends to connect) [NetBird](https://netbird.io) set up as a self-hosted or NetBird-Cloud network you control.
+An Ubuntu machine with [Docker Engine](https://docs.docker.com/engine/install/) and the Compose plugin installed, and (optionally, for friends to connect) a mesh VPN set up — [NetBird](https://netbird.io) by default, or [Tailscale](https://tailscale.com)/WireGuard/[ZeroTier](https://www.zerotier.com)/a manual static IP. See [NETWORKING.md](NETWORKING.md) for the full comparison — whichever you pick, note the [Docker deployment caveat](NETWORKING.md#docker-deployment-caveat) below before assuming auto-detection will work.
 
 ### Install
 
@@ -30,7 +30,7 @@ mkdir -p /opt/serverdock/backend/games /opt/serverdock/backend/state
 docker compose up -d --build
 ```
 
-Open `http://<this-machine's-IP>:4000`. The first load shows a one-time setup screen to create your admin account — no `setup-auth.js`, no manually generated `JWT_SECRET`, both are handled for you (see [Environment variables](#environment-variables)). Friends use the same URL for the read-only public dashboard once they're on your NetBird network.
+Open `http://<this-machine's-IP>:4000`. The first load shows a one-time setup screen to create your admin account and pick a network provider — no `setup-auth.js`, no manually generated `JWT_SECRET`/VAPID keys, all handled for you (see [Environment variables](#environment-variables)). Friends use the same URL for the read-only public dashboard once they're on your mesh.
 
 ### What the deployment actually does
 
@@ -77,7 +77,7 @@ More moving parts (a process manager, optionally nginx), no Docker dependency fo
   sudo usermod -aG docker $USER
   newgrp docker
   ```
-- **NetBird** (optional, but needed for friends to connect)
+- **A mesh VPN** (optional, but needed for friends to connect) — NetBird, Tailscale, WireGuard, or ZeroTier; see [NETWORKING.md](NETWORKING.md)
 
 ### Install
 
@@ -95,15 +95,24 @@ Create `backend/.env` (see [Environment variables](#environment-variables) for t
 
 ```env
 PORT=4000
-SERVER_HOST=192.168.1.10      # fallback IP shown to friends if NetBird isn't detected
+SERVER_HOST=192.168.1.10      # fallback IP shown to friends if the network provider isn't detected
 CORS_ORIGIN=http://192.168.1.10:3000
 ```
 
-`JWT_SECRET` is deliberately absent — leave it unset and the backend generates one on first boot and persists it in `backend/settings.json`. Only set it explicitly if you want a fixed value (e.g. to keep sessions valid across a database wipe).
+`JWT_SECRET` is deliberately absent — leave it unset and the backend generates one on first boot and persists it in `backend/settings.json`. Only set it explicitly if you want a fixed value (e.g. to keep sessions valid across a database wipe). VAPID keys (for browser push notifications) are generated and persisted the same way — nothing to configure.
+
+Which network provider to use (NetBird/Tailscale/WireGuard/ZeroTier/manual) is chosen from the app itself (first-run setup, or Settings → Network later), not an environment variable — see [NETWORKING.md](NETWORKING.md).
 
 **Admin account:** the first time the app boots with no admins configured, the frontend shows a one-time setup screen — no CLI step needed. `node setup-auth.js --username admin --password <your-password>` (run from `backend/`) still works as a scripted alternative and doubles as the recovery path if every admin account gets locked out (creates the account, or resets its password, directly in `backend/serverdock.db`).
 
 ### Run — development
+
+```bash
+# From the repo root — runs both with one command (waits for the API before starting Vite)
+npm run dev
+```
+
+or in two terminals:
 
 ```bash
 # Terminal 1 — backend (auto-reloads with nodemon)
@@ -196,7 +205,7 @@ All optional unless noted. Set via `backend/.env` (non-Docker) or `docker-compos
 |---|---|---|
 | `PORT` | `4000` | HTTP/WebSocket port |
 | `JWT_SECRET` | auto-generated on first boot, persisted in `settings.json` | Signs admin session tokens — set explicitly to pin a fixed value |
-| `SERVER_HOST` | *(none)* | Fallback connect IP shown to friends when NetBird isn't detected — always set this for a Docker install, since NetBird auto-detection doesn't cross the container boundary |
+| `SERVER_HOST` | *(none)* | Fallback connect IP shown to friends when the configured network provider isn't detected — always set this for a Docker install, since provider auto-detection doesn't cross the container boundary (see [NETWORKING.md](NETWORKING.md#docker-deployment-caveat)) |
 | `CORS_ORIGIN` | `http://localhost:5174` | Allowed origin for the API — irrelevant once the frontend is served from the same origin (the Docker image), matters for a split dev/PM2 setup |
 | `CONTAINER_DNS` | `1.1.1.1,8.8.8.8` | DNS servers handed to every game container, so they can resolve mod/update servers even when the host's own resolver isn't reachable from inside a container |
 | `DOCKER_HOST` | *(platform default socket/pipe)* | Override the Docker daemon endpoint — rarely needed |
@@ -209,6 +218,6 @@ All optional unless noted. Set via `backend/.env` (non-Docker) or `docker-compos
 
 - **`docker: unavailable` on `/api/health`, or "Docker daemon unreachable" banner** — the backend (or container) can't reach `/var/run/docker.sock`. Non-Docker install: confirm your user is in the `docker` group and you've re-logged-in (`newgrp docker`). Docker install: confirm the socket volume mount is present in `docker-compose.yml`.
 - **Port already in use** — set `PORT` to something else (`.env` for the non-Docker path, `environment:` in `docker-compose.yml` for Docker).
-- **Friends' connect address is wrong or missing** — set `SERVER_HOST` explicitly. NetBird auto-detection needs the `netbird` CLI reachable from wherever the backend runs, which the Docker image doesn't have by default.
+- **Friends' connect address is wrong or missing** — set `SERVER_HOST` explicitly. Provider auto-detection needs that provider's CLI reachable from wherever the backend runs, which the Docker image doesn't have by default (see [NETWORKING.md](NETWORKING.md#docker-deployment-caveat)).
 - **First-run setup screen doesn't appear on a fresh install** — check `GET /api/auth/setup-status`; if it reports `needsSetup: false` unexpectedly, an admin already exists (check `backend/serverdock.db`, or `state/serverdock.db` for Docker).
 - **A game's image pull is rate-limited** — Docker Hub anonymous pulls are rate-limited per IP; wait, or authenticate the host's Docker daemon (`docker login`) against a Docker Hub account.
