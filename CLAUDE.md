@@ -99,12 +99,12 @@ cd backend && node setup-auth.js --username admin --password yourpassword
 
 **Protected endpoints (require `Authorization: Bearer <token>`):**
 - All `/api/games/*`, `/api/files/*`, `/api/admins/*`, `/api/vpn/status`
-- `POST /api/servers/:id/start|stop|restart|reset|rcon`
+- `POST /api/servers/:id/start|stop|restart|reset|rcon`, `DELETE /api/servers/:id/events`
 - `POST /api/auth/logout`, `GET /api/auth/me`
 - WebSocket `join:logs` and `join:build` rooms (JWT passed on socket connection)
 
 **Permission-gated on top of JWT** (see [Roles: `super_admin` vs `admin`](#key-architectural-decisions) above for the full catalog) — a valid token alone is not enough for these; `requirePermission('<perm>')` checks SQLite fresh per request:
-- `servers:power` → start/stop/restart; `servers:reset` → reset
+- `servers:power` → start/stop/restart; `servers:reset` → reset, and `DELETE /api/servers/:id/events` (clears the Event History section — same permission since it also wipes any still-active resourceAlert/lastCrash/actionFailure, exactly like reset does)
 - `games:create`/`games:edit`/`games:delete` → the matching `/api/games/*` mutation (including avatar upload/removal, Dockerfile save, build, import/export)
 - `files:write` → `/api/files/*` mutations (still additionally gated by `requireStopped` — see File Manager Rules)
 - `backups:manage` → create/restore/delete/retention (download stays read-only for any admin)

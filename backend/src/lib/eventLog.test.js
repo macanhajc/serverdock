@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import db from './db.js';
-import { recordEvent, getActiveEvent, resolveActiveEvent, listEvents } from './eventLog.js';
+import { recordEvent, getActiveEvent, resolveActiveEvent, listEvents, clearEvents } from './eventLog.js';
 
 beforeEach(() => {
   db.exec('DELETE FROM server_events');
@@ -101,5 +101,26 @@ describe('listEvents', () => {
     expect(history.length).toBe(50);
     // Newest survive — the last recorded cpu value is 54
     expect(history[0].data.cpu).toBe(54);
+  });
+});
+
+describe('clearEvents', () => {
+  it('wipes every row for a game, resolved or not', () => {
+    recordEvent('game-1', 'resource_high', { cpu: 91 });
+    resolveActiveEvent('game-1', 'resource_high');
+    recordEvent('game-1', 'crash', { exitCode: 137, oomKilled: true, error: null });
+
+    clearEvents('game-1');
+    expect(listEvents('game-1')).toEqual([]);
+    expect(getActiveEvent('game-1', 'crash')).toBeNull();
+  });
+
+  it('leaves other games untouched', () => {
+    recordEvent('game-1', 'resource_high', { cpu: 91 });
+    recordEvent('game-2', 'resource_high', { cpu: 88 });
+
+    clearEvents('game-1');
+    expect(listEvents('game-1')).toEqual([]);
+    expect(listEvents('game-2')).toHaveLength(1);
   });
 });

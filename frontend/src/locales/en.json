@@ -409,6 +409,8 @@
     "backupDownloadFailed": "Download failed",
     "infoEventHistory": "Event History",
     "eventHistoryEmpty": "No incidents recorded.",
+    "eventHistoryClearTitle": "Clear event history?",
+    "eventHistoryClearMessage": "This permanently deletes every recorded incident for this server, including any still-active alert. This can't be undone.",
     "eventOngoing": "ongoing",
     "eventShowStack": "show stack trace",
     "eventHideStack": "hide stack trace"

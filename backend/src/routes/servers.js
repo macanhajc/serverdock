@@ -17,7 +17,7 @@ import { getPlayers, setPlayers, getPlayerList, setPlayerList } from '../lib/pla
 import { getResourceAlert, clearResourceAlert } from '../lib/resourceAlerts.js';
 import { getLastCrash, clearLastCrash } from '../lib/crashInfo.js';
 import { getActionFailure, clearActionFailure } from '../lib/actionFailures.js';
-import { listEvents } from '../lib/eventLog.js';
+import { listEvents, clearEvents } from '../lib/eventLog.js';
 import { emitResourceAlert, emitCrashUpdate, emitActionFailure } from '../lib/statusBus.js';
 import { getSelfIp } from '../lib/vpn/index.js';
 import { getSettings } from '../lib/settingsStore.js';
@@ -137,6 +137,23 @@ router.get('/:id/events', verifyToken, (req, res) => {
   const game = getGame(req.params.id);
   if (!game) return res.status(404).json({ error: 'Game not found' });
   res.json(listEvents(game.id));
+});
+
+// DELETE /api/servers/:id/events — JWT + servers:reset (same permission that
+// already wipes this game's resourceAlert/lastCrash/actionFailure state on a
+// full reset). Clears the whole history, including any still-unresolved row,
+// so live listeners are told their current alert is gone too.
+router.delete('/:id/events', verifyToken, requirePermission('servers:reset'), (req, res) => {
+  const game = getGame(req.params.id);
+  if (!game) return res.status(404).json({ error: 'Game not found' });
+  const hadResourceAlert = !!getResourceAlert(game.id);
+  const hadCrash = !!getLastCrash(game.id);
+  const hadActionFailure = !!getActionFailure(game.id);
+  clearEvents(game.id);
+  if (hadResourceAlert) emitResourceAlert(game.id, null);
+  if (hadCrash) emitCrashUpdate(game.id, null);
+  if (hadActionFailure) emitActionFailure(game.id, null);
+  res.status(204).end();
 });
 
 const AVATAR_MIME_BY_EXT = {

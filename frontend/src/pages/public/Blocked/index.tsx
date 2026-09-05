@@ -19,9 +19,7 @@ export default function Blocked() {
         <div className="w-95 max-w-full bg-bg-1 border border-line">
           {/* Card header */}
           <div className="flex items-center gap-3 px-6 py-5 border-b border-line">
-            <span className="w-7.5 h-7.5 bg-accent grid place-items-center text-white font-bold text-base font-mono">
-              S
-            </span>
+            <img src="/favicon.svg" alt="ServerDock" className="w-7.5 h-7.5" />
             <b className="text-[17px] font-bold">ServerDock</b>
             <span className="ml-auto font-mono text-xs tracking-[.08em] uppercase text-ink-3 border border-line px-2 py-0.5">
               /blocked

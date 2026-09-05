@@ -12,6 +12,7 @@
   --color-ink-2: var(--ink-2);
   --color-ink-3: var(--ink-3);
   --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
   --color-green: var(--green);
   --color-red: var(--red);
   --color-yellow: var(--yellow);
@@ -44,9 +45,16 @@
   --ink-3: #6f6f6f;
 
   /* Accent */
-  --accent: #3b82f6;
+  --accent: #06b6d4;
   --accent-dim: color-mix(in oklab, var(--accent) 22%, transparent);
   --accent-edge: color-mix(in oklab, var(--accent) 55%, transparent);
+
+  /* Accent 2 — reserved for one job: flagging something that wants
+     attention without being an error (e.g. an available image update).
+     Not a status color, don't fold it into the green/red/yellow set. */
+  --accent-2: #f59e0b;
+  --accent-2-dim: color-mix(in oklab, var(--accent-2) 22%, transparent);
+  --accent-2-edge: color-mix(in oklab, var(--accent-2) 55%, transparent);
 
   /* Status — fixed, never repurpose */
   --green: #22c55e;

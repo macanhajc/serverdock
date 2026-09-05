@@ -78,6 +78,13 @@ export function listEvents(gameId, limit = MAX_EVENTS_PER_GAME) {
     .map(toRow);
 }
 
+// Wipes the entire history for a game, including any still-unresolved row —
+// callers are responsible for telling live listeners (resourceAlert/lastCrash/
+// actionFailure) that their current alert is now gone, the same way a reset does.
+export function clearEvents(gameId) {
+  db.prepare('DELETE FROM server_events WHERE game_id = ?').run(gameId);
+}
+
 function pruneEvents(gameId) {
   db.prepare(
     `DELETE FROM server_events WHERE game_id = ? AND id NOT IN (

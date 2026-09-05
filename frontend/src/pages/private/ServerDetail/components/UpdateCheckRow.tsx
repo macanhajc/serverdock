@@ -13,7 +13,7 @@ export function UpdateCheckRow({ id, token }: { id: string; token: string | null
   if (result) {
     if (result.updateAvailable === true) {
       label = t('serverDetail.updateAvailable');
-      color = 'var(--yellow)';
+      color = 'var(--accent-2)';
       ResultIcon = WarningDiamond;
     } else if (result.updateAvailable === false) {
       label = t('serverDetail.upToDate');

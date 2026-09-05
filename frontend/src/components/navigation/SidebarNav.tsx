@@ -49,9 +49,7 @@ export function SidebarNav({
       <div
         className={`flex items-center gap-3 px-4 py-4 border-b border-line ${collapsed ? 'justify-center px-0' : ''}`}
       >
-        <span className="w-6 h-6 bg-accent grid place-items-center text-white font-bold text-sm font-mono shrink-0">
-          S
-        </span>
+        <img src="/favicon.svg" alt="ServerDock" className="w-6 h-6 shrink-0" />
         {!collapsed && <b className="font-bold text-lg text-ink whitespace-nowrap">ServerDock</b>}
       </div>
 

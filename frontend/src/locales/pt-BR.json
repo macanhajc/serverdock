@@ -408,6 +408,8 @@
     "backupDownloadFailed": "Falha ao baixar",
     "infoEventHistory": "Histórico de Eventos",
     "eventHistoryEmpty": "Nenhum incidente registrado.",
+    "eventHistoryClearTitle": "Limpar histórico de eventos?",
+    "eventHistoryClearMessage": "Isso exclui permanentemente todos os incidentes registrados para este servidor, incluindo qualquer alerta ainda ativo. Essa ação não pode ser desfeita.",
     "eventOngoing": "em andamento",
     "eventShowStack": "ver stack trace",
     "eventHideStack": "ocultar stack trace"

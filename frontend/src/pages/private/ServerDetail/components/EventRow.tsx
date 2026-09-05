@@ -37,10 +37,10 @@ export function EventRow({ entry }: { entry: ServerEventEntry }) {
   const stack = entry.type === 'action_failed' ? entry.data.stack : null;
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col border mt-1" style={{ borderColor:  `color-mix(in oklab, ${color} 50%, transparent)`, background: `color-mix(in oklab, ${color} 5%, transparent)`  }}>
       <div className="flex items-center gap-3 px-4 py-2.5">
         <WarningDiamond width={12} height={12} style={{ color }} className="shrink-0" />
-        <span className="flex-1 min-w-0 font-mono text-xs text-ink truncate">
+        <span className="flex-1 min-w-0 font-mono text-xs text-ink truncate" style={{ color }}>
           {summarizeEvent(entry, t)}
         </span>
         {!entry.resolvedAt && (

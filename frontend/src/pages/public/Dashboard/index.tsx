@@ -46,9 +46,7 @@ export default function PublicDashboard() {
       {/* Topbar */}
       <header className="flex items-center gap-3.5 h-14 px-6 border-b border-line bg-bg-1">
         <div className="flex items-center gap-3">
-          <span className="w-5.5 h-5.5 bg-accent grid place-items-center text-white font-bold text-sm font-mono">
-            S
-          </span>
+          <img src="/favicon.svg" alt="ServerDock" className="w-5.5 h-5.5" />
           <b className="font-bold tracking-[.01em] text-[15px]">ServerDock</b>
         </div>
 
