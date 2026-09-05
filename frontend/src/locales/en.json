@@ -207,7 +207,10 @@
     "cpuCombined": "% combined",
     "ramTotal": "{{size}} total",
     "loadFailed": "Could not load servers.",
-    "retry": "Retry"
+    "retry": "Retry",
+    "daemonConnected": "Backend {{host}} connected",
+    "daemonDisconnected": "Backend disconnected",
+    "totalInstances": "{{count}} instances registered"
   },
   "serverDetail": {
     "back": "back",

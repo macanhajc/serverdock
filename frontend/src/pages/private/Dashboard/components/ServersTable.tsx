@@ -48,9 +48,9 @@ export function ServersTable({
     <div
       ref={tableScrollRef}
       onScroll={handleTableScroll}
-      className="border border-line bg-bg-1 overflow-x-auto"
+      className="border flex flex-1 border-line bg-bg-1 overflow-x-auto"
     >
-      <table
+     <table
         className="border-collapse text-left"
         style={{ tableLayout: 'fixed', width: '100%', minWidth: 1590 }}
       >
@@ -67,7 +67,7 @@ export function ServersTable({
           <col style={{ width: 190 }} />
         </colgroup>
         <thead>
-          <tr className="bg-bg-2">
+          <tr className="bg-bg">
             {[
               t('adminDashboard.colServer'),
               t('adminDashboard.colStatus'),
@@ -82,7 +82,7 @@ export function ServersTable({
             ].map((col, i) => (
               <th
                 key={col}
-                className={`px-4 py-2.5 border-r border-b border-line-2 font-mono text-[11px] font-normal last:border-r-0 text-ink-3 uppercase tracking-wider sticky top-0 z-20 bg-bg-2${
+                className={`px-4 py-2.5 border-b border-line-2 font-mono text-sm font-normal last:border-r-0 text-ink-3 uppercase tracking-wider sticky top-0 z-20 ${
                   i === 0 ? ' left-0 z-30 transition-shadow' : ''
                 }`}
               >
@@ -114,14 +114,14 @@ export function ServersTable({
               <td colSpan={10} className="px-5 py-10">
                 <div className="flex items-center gap-4">
                   <span
-                    className="inline-flex items-center gap-1.5 font-mono text-xs"
+                    className="inline-flex items-center gap-1.5 font-mono text-sm"
                     style={{ color: 'var(--red)' }}
                   >
-                    <WarningDiamond width={13} height={13} />
+                    <WarningDiamond width={15} height={15} />
                     {t('adminDashboard.loadFailed')}
                   </span>
                   <Button size="sm" onClick={onRetry}>
-                    <Refresh width={12} height={12} className="mr-1.5" />
+                    <Refresh width={14} height={14} className="mr-1.5" />
                     {t('adminDashboard.retry')}
                   </Button>
                 </div>
@@ -132,8 +132,8 @@ export function ServersTable({
           {loaded && !loadError && servers.length === 0 && (
             <tr>
               <td colSpan={10} className="px-5 py-10">
-                <div className="flex flex-col items-center gap-2 font-mono text-xs text-ink-3">
-                  <Inbox width={22} height={22} />
+                <div className="flex flex-col items-center gap-2 font-mono text-sm text-ink-3">
+                  <Inbox width={24} height={24} />
                   {t('adminDashboard.noServers')}
                 </div>
               </td>

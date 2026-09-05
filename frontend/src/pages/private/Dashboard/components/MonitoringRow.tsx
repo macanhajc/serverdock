@@ -79,13 +79,12 @@ export const MonitoringRow = memo(function MonitoringRow({
 
   return (
     <tr
-      className="group border-b border-line hover:bg-bg-2 last:border-none cursor-pointer transition-colors"
+      className="group border-b bg-bg/50 border-line hover:bg-bg-2 last:border-none cursor-pointer transition-colors"
       style={rowTint ? { background: rowTint } : undefined}
       onClick={() => navigate(`/admin/servers/${id}`)}
     >
       <td
-        className="border-r border-line px-5 py-3.5 sticky left-0 z-10 bg-bg-1 group-hover:bg-bg-2 transition"
-        style={rowTint ? { background: rowTint } : undefined}
+        className="px-5 py-3.5 sticky left-0 z-10 group-hover:bg-bg-2 transition"
       >
         <div className="flex items-center gap-4">
           <div className="relative w-8 h-8 shrink-0">
@@ -94,7 +93,7 @@ export const MonitoringRow = memo(function MonitoringRow({
                 <img src={server.avatarUrl} alt="" className="w-full h-full object-cover" />
               ) : (
                 <span
-                  className="w-full h-full grid place-items-center font-mono text-[10px] font-bold"
+                  className="w-full h-full grid place-items-center font-mono text-[11px] font-bold"
                   style={{
                     color: `hsl(${gameHue(id)} 55% 78%)`,
                     background: `hsl(${gameHue(id)} 38% 16%)`,
@@ -119,41 +118,41 @@ export const MonitoringRow = memo(function MonitoringRow({
         </div>
       </td>
 
-      <td className="border-r border-line px-4 py-3.5 text-center">
+      <td className="px-4 py-3.5">
         <StatusBadge status={toUiStatus(status)}>{badgeLabel}</StatusBadge>
       </td>
 
-      <td className="border-r border-line px-4 py-3.5">
+      <td className="px-4 py-3.5">
         {isRunning && server.startedAt ? (
-          <span className="font-mono text-xs text-ink whitespace-nowrap">
+          <span className="font-mono text-sm text-ink whitespace-nowrap">
             <UptimeTicker startedAt={server.startedAt} />
           </span>
         ) : server.lastActiveAt ? (
           <span
-            className="font-mono text-xs text-ink-3 whitespace-nowrap"
+            className="font-mono text-sm text-ink-3 whitespace-nowrap"
             title={formatDate(server.lastActiveAt)}
           >
             {timeAgo(server.lastActiveAt, t)}
           </span>
         ) : (
-          <span className="font-mono text-xs text-ink-3">—</span>
+          <span className="font-mono text-sm text-ink-3">—</span>
         )}
       </td>
 
-      <td className="border-r border-line px-4 py-3.5">
+      <td className="px-4 py-3.5">
         {displayPlayers !== null ? (
-          <span className="font-mono text-xs text-ink" title={server.playerList ?? undefined}>
+          <span className="font-mono text-sm text-ink" title={server.playerList ?? undefined}>
             {displayPlayers}
           </span>
         ) : (
-          <span className="font-mono text-xs text-ink-3">—</span>
+          <span className="font-mono text-sm text-ink-3">—</span>
         )}
       </td>
 
-      <td className="border-r border-line px-4 py-3.5">
+      <td className="px-4 py-3.5">
         {isRunning && stats ? (
           <div className="flex items-center gap-2">
-            <span className="font-mono text-xs text-ink whitespace-nowrap">
+            <span className="font-mono text-sm text-ink whitespace-nowrap">
               {stats.cpu.toFixed(1)}%
             </span>
             {history && history.cpu.length > 1 && (
@@ -161,14 +160,14 @@ export const MonitoringRow = memo(function MonitoringRow({
             )}
           </div>
         ) : (
-          <span className="font-mono text-xs text-ink-3">—</span>
+          <span className="font-mono text-sm text-ink-3">—</span>
         )}
       </td>
 
-      <td className="border-r border-line px-4 py-3.5">
+      <td className="px-4 py-3.5">
         {isRunning && stats ? (
           <div className="flex items-center gap-2 min-w-0">
-            <span className="font-mono text-xs text-ink whitespace-nowrap text-ellipsis overflow-hidden">
+            <span className="font-mono text-sm text-ink whitespace-nowrap text-ellipsis overflow-hidden">
               {fmtBytes(stats.memUsed)}
               {memMax ? ` / ${fmtBytes(memMax)}` : ' / - '}
             </span>
@@ -177,38 +176,38 @@ export const MonitoringRow = memo(function MonitoringRow({
             )}
           </div>
         ) : (
-          <span className="font-mono text-xs text-ink-3">—</span>
+          <span className="font-mono text-sm text-ink-3">—</span>
         )}
       </td>
 
-      <td className="border-r border-line px-4 py-3.5">
+      <td className="px-4 py-3.5">
         {server.diskUsed != null ? (
-          <span className="font-mono text-xs text-ink whitespace-nowrap text-ellipsis overflow-hidden">
+          <span className="font-mono text-sm text-ink whitespace-nowrap text-ellipsis overflow-hidden">
             {fmtBytes(server.diskUsed)}
           </span>
         ) : (
-          <span className="font-mono text-xs text-ink-3">—</span>
+          <span className="font-mono text-sm text-ink-3">—</span>
         )}
       </td>
 
-      <td className="border-r border-line px-4 py-3.5">
+      <td className="px-4 py-3.5">
         {isRunning && stats ? (
-          <span className="inline-flex items-center font-mono text-xs text-ink-3 whitespace-nowrap text-ellipsis overflow-hidden max-w-full">
-            <ArrowDown width={11} height={11} className="mr-1" />
+          <span className="inline-flex items-center font-mono text-sm text-ink-3 whitespace-nowrap text-ellipsis overflow-hidden max-w-full">
+            <ArrowDown width={13} height={13} className="mr-1" />
             <span className="text-ink">{fmtBytes(stats.netInRate)}/s</span>
             <span className="mx-2 text-line-2">·</span>
-            <ArrowUp width={11} height={11} className="mr-1" />
+            <ArrowUp width={13} height={13} className="mr-1" />
             <span className="text-ink">{fmtBytes(stats.netOutRate)}/s</span>
           </span>
         ) : (
-          <span className="font-mono text-xs text-ink-3">—</span>
+          <span className="font-mono text-sm text-ink-3">—</span>
         )}
       </td>
 
-      <td className="border-r border-line px-4 py-3.5">
+      <td className="px-4 py-3.5">
         {server.connection ? (
           <div className="flex items-center justify-between gap-2 min-w-0">
-            <span className="font-mono text-xs text-ink whitespace-nowrap text-ellipsis overflow-hidden min-w-0">
+            <span className="font-mono text-sm text-ink whitespace-nowrap text-ellipsis overflow-hidden min-w-0">
               {server.connection.host}:{server.connection.port}
             </span>
             <CopyButton
@@ -217,7 +216,7 @@ export const MonitoringRow = memo(function MonitoringRow({
             />
           </div>
         ) : (
-          <span className="font-mono text-xs text-ink-3">—</span>
+          <span className="font-mono text-sm text-ink-3">—</span>
         )}
       </td>
 
@@ -228,34 +227,34 @@ export const MonitoringRow = memo(function MonitoringRow({
               <Button
                 size="sm"
                 variant="primary"
-                className="p-1.5"
+                className="p-2"
                 disabled={!isNotCreated || busy}
                 title={t('adminDashboard.actStart')}
                 aria-label={t('adminDashboard.actStart')}
                 onClick={(e) => act(e, () => onAction(id, 'start'))}
               >
-                <Play width={12} height={12} />
+                <Play width={14} height={14} />
               </Button>
               <Button
                 size="sm"
                 variant="danger"
-                className="p-1.5"
+                className="p-2"
                 disabled={!isRunning || busy}
                 title={t('adminDashboard.actStop')}
                 aria-label={t('adminDashboard.actStop')}
                 onClick={(e) => act(e, () => onAction(id, 'stop'))}
               >
-                <Stop width={12} height={12} />
+                <Stop width={14} height={14} />
               </Button>
               <Button
                 size="sm"
-                className="p-1.5"
+                className="p-2"
                 disabled={!isRunning || busy}
                 title={t('adminDashboard.actRestart')}
                 aria-label={t('adminDashboard.actRestart')}
                 onClick={(e) => act(e, () => onAction(id, 'restart'))}
               >
-                <Refresh width={12} height={12} />
+                <Refresh width={14} height={14} />
               </Button>
             </>
           )}
@@ -263,13 +262,13 @@ export const MonitoringRow = memo(function MonitoringRow({
             <Button
               size="sm"
               variant="danger"
-              className="p-1.5"
+              className="p-2"
               disabled={busy}
               title={t('adminDashboard.actReset')}
               aria-label={t('adminDashboard.actReset')}
               onClick={(e) => act(e, () => onWipeRequest(id, name))}
             >
-              <Trash width={12} height={12} />
+              <Trash width={14} height={14} />
             </Button>
           )}
         </div>

@@ -30,7 +30,7 @@ export function SettingsCard({
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className="w-full flex items-center justify-between gap-4 px-4 py-3.5 text-left cursor-pointer bg-transparent border-0 hover:bg-line/10"
+        className="w-full flex bg-bg-1 items-center justify-between gap-4 px-4 py-3.5 text-left cursor-pointer border-0 hover:bg-line/10"
       >
         <div className="flex items-center gap-2.5 min-w-0">
           <span className={`shrink-0 ${danger ? 'text-red' : 'text-ink'}`}>{icon}</span>

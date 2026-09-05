@@ -14,7 +14,7 @@ function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-0.5">
       <span className="font-mono text-[11px] text-ink-3 uppercase tracking-wider">{label}</span>
-      <span className="font-mono text-sm text-ink truncate" title={value}>
+      <span className="font-mono text-base text-ink font-semibold truncate" title={value}>
         {value}
       </span>
     </div>
@@ -43,35 +43,37 @@ export function NetworkCard({ status, loaded, navigate }: NetworkCardProps) {
 
   return (
     <div
-      className="border border-line border-b-0 bg-bg-1 px-5 py-4 flex items-center gap-8 cursor-pointer hover:bg-bg-2"
+      className="group flex flex-wrap items-center justify-between gap-4 cursor-pointer"
       onClick={() => navigate('/admin/network')}
     >
-      <div className="flex items-center gap-2 shrink-0">
-        <StatusDot online={!isDown} />
-        <span className="font-mono text-sm text-ink font-semibold">{providerMeta.label}</span>
+      <div className="flex flex-wrap items-center gap-8">
+        <div className="flex items-center gap-2 shrink-0">
+          <StatusDot online={!isDown} />
+          <span className="font-mono text-base text-ink font-semibold">{providerMeta.label}</span>
+        </div>
+
+        {isManual ? (
+          <span className="font-mono text-sm text-ink-3">
+            {t('adminDashboard.networkManualLabel')}
+          </span>
+        ) : isDown ? (
+          <span className="font-mono text-sm" style={{ color: 'var(--red)' }}>
+            {t('network.providerInactive', { provider: providerMeta.label })}
+          </span>
+        ) : (
+          <>
+            <Field label={t('network.vpnIp')} value={self?.ip ?? '—'} />
+            <Field
+              label={t('adminDashboard.networkPeersLabel')}
+              value={t('network.peerCount', { count: online })}
+            />
+          </>
+        )}
       </div>
 
-      {isManual ? (
-        <span className="font-mono text-xs text-ink-3">
-          {t('adminDashboard.networkManualLabel')}
-        </span>
-      ) : isDown ? (
-        <span className="font-mono text-xs" style={{ color: 'var(--red)' }}>
-          {t('network.providerInactive', { provider: providerMeta.label })}
-        </span>
-      ) : (
-        <>
-          <Field label={t('network.vpnIp')} value={self?.ip ?? '—'} />
-          <Field
-            label={t('adminDashboard.networkPeersLabel')}
-            value={t('network.peerCount', { count: online })}
-          />
-        </>
-      )}
-
-      <span className="ml-auto inline-flex items-center gap-1 font-mono text-xs text-ink-3 shrink-0">
+      <span className="inline-flex items-center gap-1 font-mono text-sm text-ink-3 group-hover:text-accent transition-colors shrink-0">
         {t('adminDashboard.networkViewNetwork')}
-        <ChevronRight width={12} height={12} />
+        <ChevronRight width={14} height={14} />
       </span>
     </div>
   );

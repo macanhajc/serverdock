@@ -206,7 +206,10 @@
     "cpuCombined": "% combinado",
     "ramTotal": "{{size}} no total",
     "loadFailed": "Não foi possível carregar os servidores.",
-    "retry": "Tentar novamente"
+    "retry": "Tentar novamente",
+    "daemonConnected": "Backend {{host}} conectado",
+    "daemonDisconnected": "Backend desconectado",
+    "totalInstances": "{{count}} instâncias registradas"
   },
   "serverDetail": {
     "back": "voltar",

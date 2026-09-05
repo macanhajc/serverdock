@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { Docker, Gear, Home, Logout, Shield, Users, Wifi } from 'pixelarticons/react';
+import { AvatarCircle, Docker, Gear, Home, Logout, Shield, ShieldSharp, Users, Wifi } from 'pixelarticons/react';
 import { LangSwitcher, SidebarNav } from '../../components';
 import { ServerEventsBridge } from '../../components/core/ServerEventsBridge';
 import { DashboardMain } from './Dashboard';
@@ -20,8 +20,7 @@ type NavValue =
   | 'network'
   | 'docker'
   | 'admins'
-  | 'settings'
-  | 'logout';
+  | 'settings';
 
 function useActiveNav(location: { pathname: string }): NavValue {
   if (location.pathname === '/admin/servers') return 'servers';
@@ -50,22 +49,14 @@ export default function PrivateRoute() {
 
   const navItems = [
     { value: 'dashboard', label: t('adminDashboard.navDashboard'), icon: Home },
-    { divider: true },
     { value: 'visitors', label: t('adminDashboard.navVisitors'), icon: Users },
     { value: 'network', label: t('adminDashboard.navNetwork'), icon: Wifi },
     { value: 'docker', label: t('docker.navTitle'), icon: Docker },
-    ...(isSuperAdmin ? [{ value: 'admins', label: t('admins.navTitle'), icon: Shield }] : []),
+    ...(isSuperAdmin ? [{ value: 'admins', label: t('admins.navTitle'), icon: AvatarCircle }] : []),
     { value: 'settings', label: t('settings.title'), icon: Gear },
-    { divider: true },
-    { value: 'logout', label: t('adminDashboard.navLogout'), icon: Logout, danger: true },
   ];
 
   function handleNav(value: string) {
-    if (value === 'logout') {
-      logout();
-      navigate('/auth', { replace: true });
-      return;
-    }
     const routes: Record<string, string> = {
       dashboard: '/admin',
       servers: '/admin/servers',
@@ -78,13 +69,26 @@ export default function PrivateRoute() {
     if (routes[value]) navigate(routes[value]);
   }
 
+  function handleLogout() {
+    logout();
+    navigate('/auth', { replace: true });
+  }
+
   return (
     <div className="flex min-h-screen bg-bg">
       <ServerEventsBridge />
 
-      <SidebarNav items={navItems} active={active} onSelect={handleNav} footer={<LangSwitcher />} />
+      <SidebarNav
+        items={navItems}
+        active={active}
+        onSelect={handleNav}
+        footer={<LangSwitcher />}
+        onLogout={handleLogout}
+        logoutLabel={t('adminDashboard.navLogout')}
+        LogoutIcon={Logout}
+      />
 
-      <main className="flex-1 min-w-0">
+      <main className="flex-1 flex flex-col min-w-0">
         <Routes>
           <Route index element={<DashboardMain navigate={navigate} />} />
           <Route path="servers/:id/*" element={<ServerDetail />} />

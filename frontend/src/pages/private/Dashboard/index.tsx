@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Server as ServerIcon, Sliders } from 'pixelarticons/react';
+import { StatusDot } from '../../../components/core/StatusDot';
 import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import { ConfirmModal } from '../../../components/core/ConfirmModal';
-import { PageHeader } from '../../../components/core/PageHeader';
 import { GlobalStatsCard } from './components/GlobalStatsCard';
 import { OsInfoCard } from './components/OsInfoCard';
 import { NetworkCard } from './components/NetworkCard';
@@ -24,7 +23,7 @@ interface DashboardMainProps {
 
 export function DashboardMain({ navigate }: DashboardMainProps) {
   const { t } = useTranslation();
-  const { hasPermission } = useAuth();
+  const { hasPermission, socketConnected } = useAuth();
   const { addToast } = useToast();
   const [confirmWipe, setConfirmWipe] = useState<{ id: string; name: string } | null>(null);
 
@@ -81,20 +80,9 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
 
   return (
     <>
-      <PageHeader
-        title={t('adminDashboard.title')}
-        subtitle={t('adminDashboard.subtitle', { count: servers.length, online: onlineCount })}
-      />
-
-      <div className="px-6 mt-6 container">
-        <div className="mb-2 flex items-center gap-2">
-          <Sliders width={15} height={15} className="text-ink-2" />
-          <span className="text-base text-ink-2 uppercase font-mono">
-            {t('serverDetail.infoSectionResources')}
-          </span>
-        </div>
-
+      <header className="container px-6 py-6 space-y-4">
         {hostOs && <OsInfoCard hostOs={hostOs} />}
+
         <NetworkCard status={vpnStatus} loaded={vpnLoaded} navigate={navigate} />
 
         <GlobalStatsCard
@@ -105,16 +93,9 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
           hostCpuModel={health?.hostCpuModel ?? null}
           hostDisk={health?.hostDisk ?? null}
         />
-      </div>
+      </header>
 
-      <div className="border-t border-line mx-6 my-6" />
-
-      <div className="px-6 pb-8 container overflow-hidden">
-        <div className="mb-2 flex items-center gap-2">
-          <ServerIcon width={15} height={15} className="text-ink-2" />
-          <span className="text-base text-ink-2 uppercase font-mono">{t('servers.title')}</span>
-        </div>
-
+      <section className="p-6 border-t border-line flex-1 bg-bg-1/70 flex-1 flex flex-col gap-4 overflow-hidden">
         <ServersSummaryBar
           onlineCount={onlineCount}
           totalCount={totalCount}
@@ -138,7 +119,19 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
           onWipeRequest={(id, name) => setConfirmWipe({ id, name })}
           onRetry={() => serversQuery.refetch()}
         />
-      </div>
+
+        <div className="flex items-center justify-between text-xs text-ink-3 font-mono pt-1">
+          <div className="flex items-center gap-2">
+            <StatusDot online={socketConnected} />
+            <span>
+              {socketConnected
+                ? t('adminDashboard.daemonConnected', { host: window.location.host })
+                : t('adminDashboard.daemonDisconnected')}
+            </span>
+          </div>
+          <div>{t('adminDashboard.totalInstances', { count: totalCount })}</div>
+        </div>
+      </section>
 
       {confirmWipe && (
         <ConfirmModal

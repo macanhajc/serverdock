@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Upload } from 'pixelarticons/react';
+import { Plus, Server as ServerIcon, Upload } from 'pixelarticons/react';
 import { Button } from '../../../../components';
 
 export function ServersSummaryBar({
@@ -24,35 +24,40 @@ export function ServersSummaryBar({
   const importInputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <div className="flex flex-row justify-between items-center border border-line bg-bg-1 px-5 py-4 mb-6">
-      <div className="flex flex-1 items-center gap-8">
-        <div className="flex flex-col flex-1">
-          <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
-            {t('adminDashboard.serversCardLabel')}
-          </div>
-          <div className="flex flex-1 items-baseline gap-2">
-            <span className="text-[26px] font-bold tabular-nums leading-none">{onlineCount}</span>
-            <span className="font-mono text-sm text-ink-3">
+    <div className="flex container flex-wrap items-end justify-between gap-4">
+      <div>
+        <div className="flex items-center gap-2 text-sm font-semibold text-ink-2 tracking-wider uppercase mb-3">
+          <ServerIcon width={16} height={16} className="text-accent" />
+          {t('servers.title')}
+        </div>
+        <div className="flex items-center gap-8 font-mono">
+          <div>
+            <span className="text-[11px] text-ink-3 block uppercase mb-1">
+              {t('adminDashboard.serversCardLabel')}
+            </span>
+            <span className="text-lg font-bold tabular-nums text-ink leading-none">
+              {onlineCount}
+            </span>
+            <span className="text-sm text-ink-3">
+              {' '}
               {t('adminDashboard.onlineOfTotal', { total: totalCount })}
             </span>
           </div>
-        </div>
 
-        <div className="border-l border-line pl-8">
-          <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
-            {t('adminDashboard.playersCardLabel')}
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-[26px] font-bold tabular-nums leading-none">{usersOnline}</span>
-            <span className="font-mono text-sm text-ink-3">
-              {t('adminDashboard.playersOnline')}
+          <div className="pl-6">
+            <span className="text-[11px] text-ink-3 block uppercase mb-1">
+              {t('adminDashboard.playersCardLabel')}
             </span>
+            <span className="text-lg font-bold tabular-nums text-ink leading-none">
+              {usersOnline}
+            </span>
+            <span className="text-sm text-ink-3"> {t('adminDashboard.playersOnline')}</span>
           </div>
         </div>
       </div>
 
       {canImport && (
-        <div className="flex flex-1 justify-end gap-2">
+        <div className="flex items-center gap-2">
           <input
             ref={importInputRef}
             type="file"
@@ -69,11 +74,11 @@ export function ServersSummaryBar({
             disabled={importing}
             onClick={() => importInputRef.current?.click()}
           >
-            <Upload width={12} height={12} className="mr-1.5" />
+            <Upload width={14} height={14} className="mr-1.5" />
             {importing ? t('adminDashboard.importing') : t('adminDashboard.importGame')}
           </Button>
           <Button variant="primary" onClick={onAddGame}>
-            <Plus width={12} height={12} className="mr-1.5" />
+            <Plus width={14} height={14} className="mr-1.5" />
             {t('adminDashboard.addGame')}
           </Button>
         </div>

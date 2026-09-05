@@ -23,7 +23,7 @@ function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-0.5">
       <span className="font-mono text-[11px] text-ink-3 uppercase tracking-wider">{label}</span>
-      <span className="font-mono text-sm text-ink truncate" title={value}>
+      <span className="font-mono text-base text-ink font-medium truncate" title={value}>
         {value}
       </span>
     </div>
@@ -34,7 +34,7 @@ export function OsInfoCard({ hostOs }: OsInfoCardProps) {
   if (!hostOs) return null;
 
   return (
-    <div className="border border-line bg-bg-1 border-b-0 px-5 py-4 grid grid-cols-4 gap-x-8 gap-y-4">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-3 pb-3 border-b border-line/60">
       <Field label="OS" value={`${hostOs.type} ${hostOs.release}`} />
       <Field label="Architecture" value={hostOs.arch} />
       <Field label="Hostname" value={hostOs.hostname} />

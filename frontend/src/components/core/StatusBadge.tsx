@@ -73,7 +73,7 @@ export function StatusBadge({
 
   return (
     <span
-      className={`inline-flex items-center gap-2 font-mono text-[8px] font-semibold tracking-wider uppercase whitespace-nowrap px-1.5 py-1 ${className}`}
+      className={`inline-flex items-center gap-2 font-mono text-[9px] font-semibold tracking-wider uppercase whitespace-nowrap px-2 py-1 ${className}`}
       style={{
         color: s.color,
         background: s.fill,
@@ -83,7 +83,7 @@ export function StatusBadge({
       {...rest}
     >
       <span
-        className="w-1 h-1 rounded-full"
+        className="w-[7px] h-[7px] rounded-full"
         style={{
           background:
             s.color === 'var(--ink-2)' || s.color === 'var(--ink-3)' ? 'var(--ink-3)' : s.color,
