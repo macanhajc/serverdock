@@ -134,11 +134,11 @@ export function ServerEventsBridge() {
   if (banners.length === 0) return null;
 
   return (
-    <div className="fixed bottom-0 left-52 right-0 z-40 flex flex-col-reverse">
+    <div className="fixed bottom-0 left-0 right-0 flex flex-col-reverse">
       {banners.map((b) => (
         <div
           key={b.key}
-          className="flex items-center gap-2 px-4 py-2 font-mono text-[11.5px] text-red border-t"
+          className="flex items-center justify-end gap-2 px-4 py-2 font-mono text-[11.5px] text-red border-t"
           style={{
             background: 'color-mix(in oklab, var(--red) 10%, var(--bg-1))',
             borderColor: 'color-mix(in oklab, var(--red) 40%, transparent)',

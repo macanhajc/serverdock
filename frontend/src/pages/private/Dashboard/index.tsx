@@ -120,7 +120,7 @@ export function DashboardMain({ navigate }: DashboardMainProps) {
           onRetry={() => serversQuery.refetch()}
         />
 
-        <div className="flex items-center justify-between text-xs text-ink-3 font-mono pt-1">
+        <div className="flex mb-6 items-center justify-between text-xs text-ink-3 font-mono pt-1">
           <div className="flex items-center gap-2">
             <StatusDot online={socketConnected} />
             <span>
