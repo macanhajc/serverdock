@@ -8,14 +8,6 @@ It's built for the "I have a spare machine and some friends" use case: a home se
 
 ## Screenshots
 
-| Admin Dashboard | Server Detail |
-|--|--|
-| <img width="1717" height="1320" alt="Screenshot From 2026-06-09 20-36-18" src="https://github.com/user-attachments/assets/127f3232-e9b7-44a9-a42d-3c9fdf435b81" /> | <img width="1717" height="1320" alt="Screenshot From 2026-06-09 20-36-47" src="https://github.com/user-attachments/assets/f10bca15-a5f7-4577-9f12-ec30a00a37c9" /> |
-
-| Public Dashboard |
-|--|
-| <img width="1330" height="1320" alt="Screenshot From 2026-06-09 20-39-07" src="https://github.com/user-attachments/assets/6af40ec5-c192-4a67-9e40-1e6c74113848" /> |
-
 ---
 
 ## Getting Started
