@@ -1,87 +1,24 @@
 import 'dotenv/config';
-import os from 'os';
+import { randomBytes } from 'crypto';
 import webpush from 'web-push';
-import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import cors from 'cors';
 import logger from './lib/logger.js';
-
-import authRoutes from './routes/auth.js';
-import serverRoutes from './routes/servers.js';
-import pushRoutes from './routes/push.js';
-import backupRoutes from './routes/backups.js';
-import gameRoutes from './routes/games.js';
-import fileRoutes from './routes/files.js';
-import visitorRoutes from './routes/visitors.js';
-import vpnRoutes from './routes/vpn.js';
-import settingsRoutes from './routes/settings.js';
-import scheduleRoutes from './routes/schedules.js';
-import dockerRoutes from './routes/docker.js';
+import { createApp } from './app.js';
 import { loadGames, getGames } from './lib/gameLoader.js';
 import { initScheduler } from './lib/scheduler.js';
-import { loadVisitors } from './lib/visitorStore.js';
-import { loadBlocklist } from './lib/blocklistStore.js';
+import { migrateLegacyData } from './lib/legacyMigration.js';
 import { loadSettings, getSettings, saveSettings } from './lib/settingsStore.js';
-import { isDockerAvailable } from './lib/docker.js';
 import docker from './lib/docker.js';
-import { getHostDiskInfo } from './lib/diskUtils.js';
 import { setIo } from './lib/socket.js';
 import { setupSocketHandlers } from './lib/socketHandlers.js';
 
-const app = express();
+const app = createApp();
 const httpServer = createServer(app);
 const corsOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:5174';
 
 const io = new Server(httpServer, {
   cors: { origin: corsOrigin },
-});
-
-app.use(cors({ origin: corsOrigin }));
-// 1mb leaves headroom for the file manager's 512 KB edit ceiling plus JSON
-// escaping overhead (express.json defaults to 100kb, which would 413 mid-size edits).
-app.use(express.json({ limit: '1mb' }));
-
-app.use('/api/auth', authRoutes);
-app.use('/api/servers', serverRoutes);
-app.use('/api/games', gameRoutes);
-app.use('/api/files', fileRoutes);
-app.use('/api/visitors', visitorRoutes);
-app.use('/api/vpn', vpnRoutes);
-app.use('/api/settings', settingsRoutes);
-app.use('/api/schedules', scheduleRoutes);
-app.use('/api/push', pushRoutes);
-app.use('/api/backups', backupRoutes);
-app.use('/api/docker', dockerRoutes);
-
-app.get('/api/health', async (req, res) => {
-  const [dockerStatus, hostDisk] = await Promise.all([
-    isDockerAvailable().then((ok) => (ok ? 'connected' : 'unavailable')),
-    getHostDiskInfo(),
-  ]);
-  const cpus = os.cpus();
-  res.json({
-    status: dockerStatus === 'connected' ? 'ok' : 'degraded',
-    docker: dockerStatus,
-    games: getGames().length,
-    hostTotalMem: os.totalmem(),
-    hostCpuCount: cpus.length,
-    hostCpuModel: cpus[0]?.model ?? null,
-    hostDisk,
-    hostOs: {
-      type: os.type(),
-      release: os.release(),
-      arch: os.arch(),
-      hostname: os.hostname(),
-      uptime: os.uptime(),
-    },
-  });
-});
-
-// Express v5 error middleware
-app.use((err, req, res, _next) => {
-  logger.error({ err, url: req.url, method: req.method }, 'unhandled error');
-  res.status(err.status ?? 500).json({ error: err.message ?? 'Internal server error' });
 });
 
 setIo(io);
@@ -99,15 +36,39 @@ await loadSettings();
   }
 }
 
+// Fall back to a generated, persisted JWT_SECRET when the operator hasn't
+// supplied one (e.g. a Docker install with no .env) — same generate-once-
+// and-reuse pattern as the VAPID keys above. An operator-supplied env var
+// always wins and is never touched here.
+if (!process.env.JWT_SECRET) {
+  const s = getSettings();
+  if (!s.generatedJwtSecret) {
+    const secret = randomBytes(32).toString('hex');
+    await saveSettings({ generatedJwtSecret: secret });
+    process.env.JWT_SECRET = secret;
+    logger.info('JWT_SECRET not set — generated and persisted one');
+  } else {
+    process.env.JWT_SECRET = s.generatedJwtSecret;
+  }
+}
+
+await migrateLegacyData();
+
 await loadGames();
 initScheduler(getGames());
-await loadVisitors();
-await loadBlocklist();
 
 const PORT = process.env.PORT ?? 4000;
 httpServer.listen(PORT, () => logger.info({ port: PORT }, 'ServerDock backend running'));
 
+// Some container runtimes redeliver SIGTERM repeatedly while waiting for a
+// process to exit (observed under Docker Desktop/WSL2) rather than sending
+// it once — without this guard, every redelivery re-entered shutdown() and
+// re-ran the async container-stop sweep concurrently with itself.
+let shuttingDown = false;
+
 async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
   logger.info({ signal }, 'shutdown received — stopping all serverdock containers');
   try {
     const containers = await docker.listContainers({ all: false });

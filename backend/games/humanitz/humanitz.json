@@ -6,11 +6,24 @@
   "image": "indifferentbroccoli/humanitz-server-docker",
   "storeUrl": "https://store.steampowered.com/app/1766060/HumanitZ/",
   "dataMount": "/home/steam/server-files",
-  "query": null,
+  "query": {
+    "type": "a2s",
+    "port": 25017
+  },
   "ports": [
     {
       "host": 7777,
       "container": 7777,
+      "protocol": "udp"
+    },
+    {
+      "host": 8888,
+      "container": 8888,
+      "protocol": "tcp"
+    },
+    {
+      "host": 25017,
+      "container": 25017,
       "protocol": "udp"
     }
   ],
@@ -48,7 +61,11 @@
   "rcon": {
     "enabled": true,
     "port": 8888,
-    "password": "tielsafadin"
+    "password": "tielsafadin",
+    "listCommand": "players",
+    "commands": {
+      "broadcast": "admin {message}"
+    }
   },
   "avatar": "avatar.webp",
   "avatarVersion": 1787702419685

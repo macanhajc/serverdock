@@ -1,21 +1,54 @@
 import { PassThrough } from 'stream';
 import jwt from 'jsonwebtoken';
-import docker from './docker.js';
+import docker, { dockerEndpoint } from './docker.js';
 import { getGames } from './gameLoader.js';
-import { getEffectiveStatus, getContainerExitInfo, sendStdinCommand } from './containers.js';
-import { queryA2S, getPlayers, setPlayers } from './playerQuery.js';
-import { attachStatsStream, detachStatsStream } from './statsStreams.js';
-import { sendCrashNotification } from './notifier.js';
+import { getEffectiveStatuses, getContainerExitInfo, sendStdinCommand } from './containers.js';
+import { queryA2S, getPlayers, setPlayers, getPlayerList, setPlayerList } from './playerQuery.js';
+import { getResourceAlert, setResourceAlert, clearResourceAlert } from './resourceAlerts.js';
+import { getLastCrash, setLastCrash, clearLastCrash } from './crashInfo.js';
+import { getActionFailure, clearActionFailure } from './actionFailures.js';
+import { attachStatsStream, detachStatsStream, computeCpuMem } from './statsStreams.js';
+import { sendRconCommand } from './rcon.js';
+import { sendCrashNotification, sendEventNotification } from './notifier.js';
+import { getHostDiskInfo } from './diskUtils.js';
+import { getLogBuffer, pushLogBuffer } from './logBuffer.js';
+import { isRevoked } from './tokenRevocation.js';
+import { hasPermission } from './adminStore.js';
 import {
   getTransient,
   getLastKnown,
   emitStatus,
   emitCrashAlert,
   emitDockerStatus,
+  emitDiskStatus,
+  emitServerEvent,
+  emitPlayers,
+  emitResourceAlert,
+  emitCrashUpdate,
+  emitActionFailure,
   consumeAdminStop,
   clearAdminStop,
 } from './statusBus.js';
 import logger from './logger.js';
+
+// Player count/list can change without a status transition — compare against
+// the cache and only touch it (and broadcast) when something actually moved.
+function updatePlayers(id, players) {
+  if (getPlayers(id) === players) return;
+  setPlayers(id, players);
+  emitPlayers(id, players, getPlayerList(id));
+}
+
+function updatePlayerList(id, playerList) {
+  if (getPlayerList(id) === playerList) return;
+  setPlayerList(id, playerList);
+  emitPlayers(id, getPlayers(id), playerList);
+}
+
+// RCON needs a fresh TCP connection + auth handshake per query (unlike A2S's
+// single UDP packet), so the player list is polled less often than status.
+const RCON_PLAYERS_EVERY_N_TICKS = 3; // ~15s at the 5s poll interval
+const RCON_PLAYER_LIST_MAX_LEN = 2000;
 
 // --- Log level detection ---
 
@@ -23,23 +56,6 @@ function detectLevel(line) {
   if (/\b(ERROR|FATAL)\b|Exception/.test(line)) return 'error';
   if (/\bWARN(?:ING)?\b/.test(line)) return 'warn';
   return 'info';
-}
-
-// --- Log history ring buffer ---
-// Map<gameId, Array<{ ts, line, level }>> — replayed to sockets joining logs:<id>
-// so late viewers see context instead of a blank pane.
-
-const LOG_BUFFER_MAX = 300;
-const logBuffers = new Map();
-
-function pushLogBuffer(id, entry) {
-  let buf = logBuffers.get(id);
-  if (!buf) {
-    buf = [];
-    logBuffers.set(id, buf);
-  }
-  buf.push(entry);
-  if (buf.length > LOG_BUFFER_MAX) buf.splice(0, buf.length - LOG_BUFFER_MAX);
 }
 
 // Docker `timestamps: true` prefixes every line with an RFC3339Nano timestamp
@@ -76,7 +92,7 @@ async function attachLogStream(io, id) {
 
   // Lines up to the last buffered timestamp were already delivered (live or via
   // log:history replay) — `since` keeps a re-attach from re-broadcasting them.
-  const buf = logBuffers.get(id);
+  const buf = getLogBuffer(id);
   const lastTs = buf?.length ? buf[buf.length - 1].ts : null;
 
   let raw;
@@ -149,6 +165,78 @@ function detachLogStream(id) {
 
 let dockerDown = false;
 
+// Host disk space and per-container resource usage — both checked far less
+// often than container status since neither moves fast enough to need 5s
+// granularity. 20% free / 90% used mirror the dashboard's own yellow (>80%)
+// warning tier, just pushed further out for an actual alert.
+const PERIODIC_CHECK_EVERY_N_TICKS = 12; // ~60s at the 5s poll interval
+const DISK_LOW_FREE_RATIO = 0.2;
+let pollTick = 0;
+let diskLow = false;
+let lastDiskStatus = { low: false, free: null, total: null };
+
+async function checkDiskSpace() {
+  const info = await getHostDiskInfo();
+  if (!info || !info.total) return;
+  const isLow = info.free / info.total < DISK_LOW_FREE_RATIO;
+  lastDiskStatus = { low: isLow, free: info.free, total: info.total };
+  if (isLow === diskLow) return;
+  diskLow = isLow;
+  emitDiskStatus(lastDiskStatus);
+  if (isLow) {
+    logger.warn({ free: info.free, total: info.total }, 'host disk space low');
+    sendEventNotification(
+      'Host Disk Space Low',
+      `Only ${(info.free / 1e9).toFixed(1)} GB free of ${(info.total / 1e9).toFixed(1)} GB.`
+    ).catch(() => {});
+  } else {
+    logger.info({ free: info.free, total: info.total }, 'host disk space recovered');
+  }
+}
+
+// Resource usage alerts — requires two consecutive high readings (~2 min
+// sustained) before alerting, so a brief spike (e.g. a world autosave) doesn't
+// trigger a false alarm. The alert itself (see resourceAlerts.js) persists
+// until usage normalizes, so it survives past the one-shot toast that
+// emitServerEvent triggers — the table row and detail page reflect it for as
+// long as the condition is ongoing, not just for the toast's lifetime.
+const RESOURCE_HIGH_PCT = 90;
+const RESOURCE_SUSTAINED_CHECKS = 2;
+const resourceHighStreak = new Map(); // gameId -> consecutive high-check count
+
+async function checkResourceUsage(game) {
+  let raw;
+  try {
+    raw = await docker.getContainer(`serverdock-${game.id}`).stats({ stream: false });
+  } catch {
+    return;
+  }
+  const { cpu, memUsed, memLimit } = computeCpuMem(raw);
+  const memPct = memLimit > 0 ? (memUsed / memLimit) * 100 : 0;
+  const high = cpu > RESOURCE_HIGH_PCT || memPct > RESOURCE_HIGH_PCT;
+
+  if (!high) {
+    resourceHighStreak.delete(game.id);
+    if (clearResourceAlert(game.id)) {
+      logger.info({ gameId: game.id }, 'resource usage recovered');
+      emitResourceAlert(game.id, null);
+    }
+    return;
+  }
+
+  const streak = (resourceHighStreak.get(game.id) ?? 0) + 1;
+  resourceHighStreak.set(game.id, streak);
+  if (streak < RESOURCE_SUSTAINED_CHECKS || getResourceAlert(game.id)) return;
+
+  const detail =
+    cpu > RESOURCE_HIGH_PCT ? `CPU at ${cpu.toFixed(0)}%` : `memory at ${memPct.toFixed(0)}%`;
+  const alert = setResourceAlert(game.id, { cpu, memPct, message: detail });
+  logger.warn({ gameId: game.id, cpu, memPct }, 'sustained high resource usage');
+  emitServerEvent({ type: 'resource_high', id: game.id, name: game.name, message: detail });
+  emitResourceAlert(game.id, alert);
+  sendEventNotification('High Resource Usage', `${game.name}: ${detail}.`, game.id).catch(() => {});
+}
+
 async function pollStatus(io) {
   // Docker daemon reachability — going silent here would hide every other signal
   try {
@@ -158,28 +246,83 @@ async function pollStatus(io) {
       logger.info('docker daemon reachable again');
       emitDockerStatus(true);
     }
-  } catch {
+  } catch (err) {
     if (!dockerDown) {
       dockerDown = true;
-      logger.error('docker daemon unreachable');
+      logger.error(`docker daemon unreachable at ${dockerEndpoint}: ${err.message}`);
       emitDockerStatus(false);
     }
     return;
   }
 
-  for (const game of getGames()) {
+  pollTick++;
+  const periodicCheckDue = pollTick % PERIODIC_CHECK_EVERY_N_TICKS === 0;
+  if (periodicCheckDue) {
+    checkDiskSpace().catch(() => {});
+  }
+
+  const games = getGames();
+  const statuses = await getEffectiveStatuses(games.map((g) => g.id));
+
+  if (periodicCheckDue) {
+    for (const game of games) {
+      if (statuses.get(game.id) === 'running') checkResourceUsage(game).catch(() => {});
+    }
+  }
+
+  for (const game of games) {
     // An operation (start/pull/stop/…) owns this id right now — don't fight it
     if (getTransient(game.id)) continue;
     try {
-      const status = await getEffectiveStatus(game.id);
+      const status = statuses.get(game.id) ?? 'not_created';
       const prev = getLastKnown(game.id);
+
+      // checkResourceUsage only runs for running games, so a stopped/reset
+      // server (or a stale unresolved row surviving a backend restart) would
+      // otherwise keep a stale alert forever — clear it here, every tick, as
+      // a standing invariant rather than only on the prev!==status transition
+      // below. That matters because containers.js's start/stop/restart/reset
+      // actions settle status via emitStatus() directly (see setTransient/
+      // settleTransient in statusBus.js) — by the time the poll's next tick
+      // runs, lastKnown already matches the new status, so prev !== status
+      // never fires for a transition the *action* itself already completed.
+      if (status !== 'running' && clearResourceAlert(game.id)) {
+        emitResourceAlert(game.id, null);
+      }
+      // Same reasoning applies to a stale crash record, and to a start/
+      // restart failure: a server that reaches running proves whatever was
+      // wrong before isn't happening anymore, whether or not the poll
+      // itself is the one that observed the transition into running (see
+      // comment above).
+      if (status === 'running') {
+        if (clearLastCrash(game.id)) emitCrashUpdate(game.id, null);
+        if (clearActionFailure(game.id)) emitActionFailure(game.id, null);
+      }
+
       // Query player count for running games with A2S configured
       if (status === 'running' && game.query?.type === 'a2s') {
         queryA2S(game.query.port)
-          .then((v) => setPlayers(game.id, v))
+          .then((v) => updatePlayers(game.id, v))
           .catch(() => {});
       } else if (status !== 'running') {
-        setPlayers(game.id, null);
+        updatePlayers(game.id, null);
+      }
+
+      // Live player list via RCON, for games with a configured list command
+      // (e.g. "list" on Minecraft) — visibility only, not player management.
+      if (
+        status === 'running' &&
+        game.rcon?.enabled &&
+        game.rcon?.listCommand &&
+        pollTick % RCON_PLAYERS_EVERY_N_TICKS === 0
+      ) {
+        sendRconCommand(game, game.rcon.listCommand)
+          .then((v) =>
+            updatePlayerList(game.id, (v || '').trim().slice(0, RCON_PLAYER_LIST_MAX_LEN))
+          )
+          .catch(() => {});
+      } else if (status !== 'running') {
+        updatePlayerList(game.id, null);
       }
 
       if (prev !== status) {
@@ -187,6 +330,7 @@ async function pollStatus(io) {
         logger.info({ gameId: game.id, from: prev ?? 'unknown', to: status }, 'status change');
 
         // A server that reaches running resets any stale admin-stop intent
+        // (the crash record itself is already handled above, unconditionally)
         if (status === 'running') clearAdminStop(game.id);
 
         // Crash detection: an unexpected exit from running, or any entry into the
@@ -202,6 +346,7 @@ async function pollStatus(io) {
           const exitInfo = await getContainerExitInfo(game.id);
           sendCrashNotification(game, exitInfo).catch(() => {});
           emitCrashAlert({ id: game.id, name: game.name, status, exitInfo });
+          emitCrashUpdate(game.id, setLastCrash(game.id, exitInfo));
         }
 
         // Auto-attach the log stream when a container starts running and someone is watching
@@ -226,7 +371,9 @@ export function setupSocketHandlers(io) {
     const token = socket.handshake.auth?.token;
     if (token) {
       try {
-        socket.user = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        if (isRevoked(decoded.jti)) throw new Error('revoked');
+        socket.user = decoded;
       } catch {
         return next(new Error('Invalid token'));
       }
@@ -241,15 +388,20 @@ export function setupSocketHandlers(io) {
       try {
         // Snapshot only — lastKnown belongs to the poll, so a join right after a
         // crash can't erase the transition before the poll alerts on it.
-        const snapshot = await Promise.all(
-          getGames().map(async (game) => ({
-            id: game.id,
-            status: await getEffectiveStatus(game.id),
-            players: getPlayers(game.id),
-          }))
-        );
+        const games = getGames();
+        const statuses = await getEffectiveStatuses(games.map((g) => g.id));
+        const snapshot = games.map((game) => ({
+          id: game.id,
+          status: statuses.get(game.id) ?? 'not_created',
+          players: getPlayers(game.id),
+          playerList: getPlayerList(game.id),
+          resourceAlert: getResourceAlert(game.id),
+          lastCrash: getLastCrash(game.id),
+          actionFailure: getActionFailure(game.id),
+        }));
         socket.emit('status:all', snapshot);
         socket.emit('docker:status', { available: !dockerDown });
+        socket.emit('disk:status', lastDiskStatus);
       } catch {
         // Docker unavailable — client will get updates when it recovers
       }
@@ -266,7 +418,7 @@ export function setupSocketHandlers(io) {
       socket.join(`logs:${id}`);
       // Replay buffered history to this socket only — the live stream may already
       // be attached for another viewer, in which case no tail will be re-fetched.
-      const history = logBuffers.get(id);
+      const history = getLogBuffer(id);
       if (history?.length) socket.emit('log:history', { id, lines: history });
       try {
         await attachLogStream(io, id);
@@ -297,6 +449,9 @@ export function setupSocketHandlers(io) {
     // only writes to stdin through a short-lived, stdin-only attach.
     socket.on('console:input', async ({ id, input } = {}) => {
       if (!socket.user) return socket.emit('error', { message: 'Authentication required' });
+      const canWrite =
+        socket.user.role === 'super_admin' || hasPermission(socket.user.sub, 'console:write');
+      if (!canWrite) return socket.emit('error', { message: 'Insufficient permissions' });
       if (!id || typeof input !== 'string') return;
       try {
         await sendStdinCommand(id, input.slice(0, 1024));
@@ -336,6 +491,10 @@ export function setupSocketHandlers(io) {
       }
     });
   });
+
+  // Populate lastDiskStatus immediately so an early join:status doesn't wait
+  // out the first periodic check.
+  checkDiskSpace().catch(() => {});
 
   setInterval(() => pollStatus(io), 5_000);
 }

@@ -11,6 +11,11 @@
       "host": 25565,
       "container": 25565,
       "protocol": "tcp"
+    },
+    {
+      "host": 25555,
+      "container": 25555,
+      "protocol": "tcp"
     }
   ],
   "environment": [
@@ -42,6 +47,10 @@
   "rcon": {
     "enabled": true,
     "port": 25555,
-    "password": "312123"
+    "password": "312123",
+    "listCommand": "list",
+    "commands": {
+      "broadcast": "say {message}"
+    }
   }
 }

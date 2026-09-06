@@ -1,122 +1,41 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { io } from 'socket.io-client';
 import { ServerCard } from '../../../components/data/ServerCard';
 import { ServerCardSkeleton } from '../../../components/data/ServerCardSkeleton';
 import { LangSwitcher } from '../../../components/core/LangSwitcher';
-import { CopyButton } from '../../../components/core/CopyButton';
 import { PageHeader } from '../../../components/core/PageHeader';
 import { HowToConnectModal } from './components/HowToConnectModal';
-import { toUiStatus, gameHue, gameMark, sortOnlineFirst } from '../../../utils/serverStatus';
+import { useVisitorIdentify } from './hooks/useVisitorIdentify';
+import { useNetworkProvider } from './hooks/useNetworkProvider';
+import { useServers } from './hooks/useServers';
+import { useServerSocketSync } from './hooks/useServerSocketSync';
+import {
+  toUiStatus,
+  gameHue,
+  gameMark,
+  sortOnlineFirst,
+  getDisplayPlayerCount,
+} from '../../../utils/serverStatus';
 import { timeAgo } from '../../../utils/format';
-import type { Server } from '../../../types';
 
-interface ConnectCellProps {
-  host: string;
-  port: number;
-}
-
-function ConnectCell({ host, port }: ConnectCellProps) {
-  const addr = `${host}:${port}`;
-  return (
-    <span className="flex items-center gap-2">
-      <span>{addr}</span>
-      <CopyButton text={addr} className="text-sm" />
-    </span>
-  );
-}
-
-interface Visitor {
-  username: string;
+function maintenanceMinutes(at: string): number {
+  return Math.max(1, Math.round((new Date(at).getTime() - Date.now()) / 60_000));
 }
 
 export default function PublicDashboard() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
-  const [visitor, setVisitor] = useState<Visitor | null>(null);
-  const [identifying, setIdentifying] = useState(true);
-  const [servers, setServers] = useState<Server[]>([]);
   const [search, setSearch] = useState('');
   const [showHelp, setShowHelp] = useState(false);
 
-  useEffect(() => {
-    const token = localStorage.getItem('sd_visitor_token');
-    fetch('/api/visitors/identify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: token ?? undefined }),
-    })
-      .then(async (r) => {
-        if (r.status === 403) {
-          const body = await r.json().catch(() => ({}));
-          navigate(body.error === 'blocked' ? '/blocked' : '/auth', { replace: true });
-          return;
-        }
-        if (!r.ok) {
-          navigate('/auth', { replace: true });
-          return;
-        }
-        const data = await r.json();
-        localStorage.setItem('sd_visitor_token', data.token);
-        setVisitor({ username: data.username });
-      })
-      .catch(() => navigate('/auth', { replace: true }))
-      .finally(() => setIdentifying(false));
-  }, [navigate]);
+  const { visitor, identifying } = useVisitorIdentify();
+  const networkProviderQuery = useNetworkProvider();
+  const serversQuery = useServers(!!visitor);
+  useServerSocketSync(!!visitor);
 
-  const fetchServers = useCallback(
-    () =>
-      fetch('/api/servers')
-        .then((r) => (r.ok ? r.json() : Promise.reject()))
-        .then((data: Server[]) => setServers(data))
-        .catch(() => {}),
-    []
-  );
-
-  useEffect(() => {
-    if (!visitor) return;
-
-    const socket = io({ autoConnect: false });
-
-    socket.on('status:all', (snapshot: Array<{ id: string; status: Server['status']; players: number | null }>) => {
-      setServers((prev) => {
-        if (prev.length === 0) return prev;
-        const map = new Map(snapshot.map((u) => [u.id, { status: u.status, players: u.players }]));
-        return prev.map((s) => {
-          const u = map.get(s.id);
-          if (!u) return s;
-          const players = u.status === 'running' ? (u.players ?? s.players) : u.players;
-          return { ...s, status: u.status, players };
-        });
-      });
-    });
-
-    socket.on('status:update', ({ id, status, players }: { id: string; status: Server['status']; players: number | null }) => {
-      setServers((prev) =>
-        prev.map((s) =>
-          s.id === id
-            ? { ...s, status, players: status === 'running' ? (players ?? s.players) : players }
-            : s
-        )
-      );
-    });
-
-    fetchServers().then(() => {
-      socket.connect();
-      socket.emit('join:status');
-    });
-
-    const poll = setInterval(fetchServers, 10_000);
-
-    return () => {
-      socket.emit('leave:status');
-      socket.disconnect();
-      clearInterval(poll);
-    };
-  }, [visitor, fetchServers]);
-
-  const loading = identifying || servers.length === 0;
+  const networkProvider = networkProviderQuery.data?.networkProvider ?? null;
+  const servers = serversQuery.data ?? [];
+  const loading = identifying || serversQuery.isLoading;
   const onlineCount = servers.filter((s) => s.status === 'running').length;
   const filtered = sortOnlineFirst(
     search ? servers.filter((s) => s.name.toLowerCase().includes(search.toLowerCase())) : servers
@@ -127,9 +46,7 @@ export default function PublicDashboard() {
       {/* Topbar */}
       <header className="flex items-center gap-3.5 h-14 px-6 border-b border-line bg-bg-1">
         <div className="flex items-center gap-3">
-          <span className="w-5.5 h-5.5 bg-accent grid place-items-center text-white font-bold text-sm font-mono">
-            S
-          </span>
+          <img src="/favicon.svg" alt="ServerDock" className="w-5.5 h-5.5" />
           <b className="font-bold tracking-[.01em] text-[15px]">ServerDock</b>
         </div>
 
@@ -163,20 +80,22 @@ export default function PublicDashboard() {
         </div>
       </PageHeader>
 
-      {/* Help banner */}
-      <div
-        className="flex items-center gap-3 px-6 py-3 border-b border-line flex-wrap"
-        style={{ background: 'var(--accent-dim)' }}
-      >
-        <span className="text-accent font-bold text-[15px] shrink-0">ℹ</span>
-        <span className="text-sm text-white">{t('publicDashboard.helpBannerText')}</span>
-        <button
-          onClick={() => setShowHelp(true)}
-          className="ml-auto shrink-0 border px-3.5 py-2 text-xs font-semibold cursor-pointer bg-accent text-white border-accent tracking-[.02em]"
+      {/* Help banner — netbird-only for now, see the networkProvider fetch above */}
+      {networkProvider === 'netbird' && (
+        <div
+          className="flex items-center gap-3 px-6 py-3 border-b border-line flex-wrap"
+          style={{ background: 'var(--accent-dim)' }}
         >
-          {t('publicDashboard.howToConnect')}
-        </button>
-      </div>
+          <span className="text-accent font-bold text-[15px] shrink-0">ℹ</span>
+          <span className="text-sm text-white">{t('publicDashboard.helpBannerText')}</span>
+          <button
+            onClick={() => setShowHelp(true)}
+            className="ml-auto shrink-0 border px-3.5 py-2 text-xs font-semibold cursor-pointer bg-accent text-white border-accent tracking-[.02em]"
+          >
+            {t('publicDashboard.howToConnect')}
+          </button>
+        </div>
+      )}
 
       {/* Card grid */}
       <div className="grid gap-6 pt-8 pb-16 px-6 grid-cols-[repeat(auto-fill,minmax(var(--card-min),1fr))] *:max-w-105">
@@ -186,35 +105,55 @@ export default function PublicDashboard() {
             name={server.name}
             engine={server.image}
             status={toUiStatus(server.status)}
-            players={server.players ?? '—'}
-            ip={server.connection
-              ? <ConnectCell host={server.connection.host} port={server.connection.port} />
-              : <span className="font-mono text-xs text-ink-3">—</span>
+            players={
+              server.playerList ? (
+                <span title={server.playerList}>{getDisplayPlayerCount(server) ?? '—'}</span>
+              ) : (
+                (getDisplayPlayerCount(server) ?? '—')
+              )
             }
+            connection={server.connection}
             hue={gameHue(server.id)}
             mark={gameMark(server.name)}
             source={server.imageSource === 'local' ? 'Steam' : 'Public'}
             avatarUrl={server.avatarUrl}
             storeUrl={server.storeUrl}
-            pinnedEnv={server.pinnedEnv ?? []}
+            pinnedEnv={server.pinnedEnv}
             lastActive={
               server.status !== 'running' && server.lastActiveAt
                 ? t('publicDashboard.lastActive', { time: timeAgo(server.lastActiveAt, t) })
                 : undefined
             }
-          />
+          >
+            {server.maintenanceSoon && (
+              <div
+                className="mt-3 pt-3 border-t border-line font-mono text-[11px]"
+                style={{ color: 'var(--yellow)' }}
+              >
+                ⚠{' '}
+                {t(
+                  server.maintenanceSoon.action === 'stop'
+                    ? 'publicDashboard.maintenanceStop'
+                    : 'publicDashboard.maintenanceRestart',
+                  { minutes: maintenanceMinutes(server.maintenanceSoon.at) }
+                )}
+              </div>
+            )}
+          </ServerCard>
         ))}
 
         {loading && Array.from({ length: 6 }, (_, i) => <ServerCardSkeleton key={i} />)}
 
         {!loading && filtered.length === 0 && (
           <span className="font-mono text-xs text-ink-3">
-            {t('publicDashboard.noMatch', { search })}
+            {search ? t('publicDashboard.noMatch', { search }) : t('publicDashboard.noServers')}
           </span>
         )}
       </div>
 
-      {showHelp && <HowToConnectModal onClose={() => setShowHelp(false)} />}
+      {showHelp && networkProvider === 'netbird' && (
+        <HowToConnectModal onClose={() => setShowHelp(false)} />
+      )}
     </div>
   );
 }

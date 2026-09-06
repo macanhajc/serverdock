@@ -1,3 +1,4 @@
+import { Bookmark, Trash } from 'pixelarticons/react';
 import { EnvVarRow } from '../../../../types';
 
 interface EnvRowProps {
@@ -36,14 +37,14 @@ export function EnvRow({ env, idx, onChange, onRemove, pinnedLabel, pinLabel }: 
             : 'bg-bg-1 border-line text-ink-3 hover:text-ink'
         }`}
       >
-        ◆
+        <Bookmark width={14} height={14} />
       </button>
       <button
         type="button"
         onClick={() => onRemove(idx)}
         className="h-9 flex items-center justify-center bg-bg-1 border border-line text-ink-3 cursor-pointer hover:text-red"
       >
-        ✕
+        <Trash width={14} height={14} />
       </button>
     </div>
   );

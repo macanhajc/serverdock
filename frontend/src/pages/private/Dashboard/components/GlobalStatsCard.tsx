@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { ArrowDown, ArrowUp, Cpu, Database, MemoryStick, Wifi } from 'pixelarticons/react';
 import { HostDisk, Server, ServerStats } from '../../../../types';
 import { fmtBytes } from '../../../../utils/format';
 
@@ -37,17 +38,18 @@ export function GlobalStatsCard({
   const diskPct = hostDisk ? Math.min((serversDiskUsed / hostDisk.total) * 100, 100) : null;
 
   return (
-    <div className="border border-line bg-bg-1 grid grid-cols-4">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       {/* CPU */}
-      <div className="px-5 py-4 border-r border-line">
-        <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+      <div className="border border-line bg-bg-1 px-4 py-4">
+        <div className="flex items-center gap-1.5 font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+          <Cpu width={14} height={14} className="text-accent" />
           {t('adminDashboard.statCpu')}
         </div>
         <div className="flex items-baseline gap-2 mb-3">
-          <span className="text-[26px] font-bold tabular-nums font-mono leading-none">
+          <span className="text-[29px] font-bold tabular-nums font-mono leading-none">
             {totalCpu.toFixed(1)}
           </span>
-          <span className="font-mono text-sm text-ink-3">
+          <span className="font-mono text-[15px] text-ink-3">
             {hostCpuCount
               ? t('adminDashboard.cpuOfCores', { cores: hostCpuCount })
               : t('adminDashboard.cpuCombined')}
@@ -55,32 +57,33 @@ export function GlobalStatsCard({
         </div>
 
         <div className="h-1 relative" style={{ background: 'var(--line-2)' }}>
-            <div
-              className="absolute inset-y-0 left-0 transition-[width] duration-500"
-              style={{
-                width: `${cpuPct}%`,
-                background: cpuPct > 80 ? 'var(--yellow)' : 'var(--accent)',
-              }}
-            />
+          <div
+            className="absolute inset-y-0 left-0 transition-[width] duration-500"
+            style={{
+              width: `${cpuPct}%`,
+              background: cpuPct > 80 ? 'var(--yellow)' : 'var(--accent)',
+            }}
+          />
         </div>
 
         {hostCpuModel && (
-          <div className="font-mono text-[11px] text-ink-3 mt-2 truncate" title={hostCpuModel}>
+          <div className="font-mono text-xs text-ink-3 mt-2 truncate" title={hostCpuModel}>
             {hostCpuModel}
           </div>
         )}
       </div>
 
       {/* RAM */}
-      <div className="px-5 py-4 border-r border-line">
-        <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+      <div className="border border-line bg-bg-1 px-4 py-4">
+        <div className="flex items-center gap-1.5 font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+          <MemoryStick width={14} height={14} className="text-accent" />
           {t('adminDashboard.statRam')}
         </div>
         <div className="flex items-baseline gap-2 mb-3">
-          <span className="text-[26px] font-bold tabular-nums font-mono leading-none">
+          <span className="text-[29px] font-bold tabular-nums font-mono leading-none">
             {fmtBytes(totalMemUsed)}
           </span>
-          {ramMax && <span className="font-mono text-sm text-ink-3">/ {fmtBytes(ramMax)}</span>}
+          {ramMax && <span className="font-mono text-[15px] text-ink-3">/ {fmtBytes(ramMax)}</span>}
         </div>
 
         {ramPct !== null && (
@@ -95,24 +98,25 @@ export function GlobalStatsCard({
           </div>
         )}
         {ramMax && (
-          <div className="font-mono text-[11px] text-ink-3 mt-2">
+          <div className="font-mono text-xs text-ink-3 mt-2">
             {t('adminDashboard.ramTotal', { size: fmtBytes(ramMax) })}
           </div>
         )}
       </div>
 
       {/* Disk */}
-      <div className="px-5 py-4 border-r border-line">
-        <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+      <div className="border border-line bg-bg-1 px-4 py-4">
+        <div className="flex items-center gap-1.5 font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+          <Database width={14} height={14} className="text-accent" />
           {t('adminDashboard.statDisk')}
         </div>
         {hostDisk ? (
           <>
             <div className="flex items-baseline gap-2 mb-3">
-              <span className="text-[26px] font-bold tabular-nums font-mono leading-none">
+              <span className="text-[29px] font-bold tabular-nums font-mono leading-none">
                 {fmtBytes(serversDiskUsed)}
               </span>
-              <span className="font-mono text-sm text-ink-3">/ {fmtBytes(hostDisk.total)}</span>
+              <span className="font-mono text-[15px] text-ink-3">/ {fmtBytes(hostDisk.total)}</span>
             </div>
             <div className="h-1 relative" style={{ background: 'var(--line-2)' }}>
               <div
@@ -125,21 +129,24 @@ export function GlobalStatsCard({
             </div>
           </>
         ) : (
-          <span className="font-mono text-sm text-ink-3">—</span>
+          <span className="font-mono text-[15px] text-ink-3">—</span>
         )}
       </div>
 
       {/* Network */}
-      <div className="px-5 py-4">
-        <div className="font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+      <div className="border border-line bg-bg-1 px-4 py-4">
+        <div className="flex items-center gap-1.5 font-mono text-[11px] text-ink-3 uppercase tracking-wider mb-3">
+          <Wifi width={14} height={14} className="text-accent" />
           {t('adminDashboard.statNetwork')}
         </div>
-        <div className="font-mono text-sm text-ink-3 flex flex-col gap-1">
-          <span>
-            ↓ <span className="text-ink font-bold">{fmtBytes(totalNetIn)}/s</span>
+        <div className="font-mono text-[15px] text-ink-3 flex flex-col gap-1">
+          <span className="inline-flex items-center gap-1">
+            <ArrowDown width={13} height={13} />
+            <span className="text-ink font-bold">{fmtBytes(totalNetIn)}/s</span>
           </span>
-          <span>
-            ↑ <span className="text-ink font-bold">{fmtBytes(totalNetOut)}/s</span>
+          <span className="inline-flex items-center gap-1">
+            <ArrowUp width={13} height={13} />
+            <span className="text-ink font-bold">{fmtBytes(totalNetOut)}/s</span>
           </span>
         </div>
       </div>

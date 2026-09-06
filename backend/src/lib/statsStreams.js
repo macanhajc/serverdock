@@ -5,22 +5,26 @@ import { getGame } from './gameLoader.js';
 // Map<gameId, { stream, refCount, prevNetIn, prevNetOut, prevTs }>
 const activeStatsStreams = new Map();
 
+// CPU % as fraction of total system capacity (0–100%), matching htop/ubuntu system monitor.
+// system_cpu_usage is the aggregate across all cores, so cpuDelta/sysDelta is already
+// normalised — no need to multiply by numCpus. Docker's stats payload always carries both
+// the current and previous sample (cpu_stats/precpu_stats), so this works from one snapshot.
+export function computeCpuMem(s) {
+  const cpuDelta = s.cpu_stats.cpu_usage.total_usage - s.precpu_stats.cpu_usage.total_usage;
+  const sysDelta = s.cpu_stats.system_cpu_usage - s.precpu_stats.system_cpu_usage;
+  const cpu = sysDelta > 0 ? (cpuDelta / sysDelta) * 100 : 0;
+
+  // Memory (exclude page cache from used)
+  const memUsed = s.memory_stats.usage - (s.memory_stats.stats?.cache ?? 0);
+  const memLimit = s.memory_stats.limit;
+
+  return { cpu: Math.min(100, Math.max(0, cpu)), memUsed, memLimit };
+}
+
 function parseStats(raw, slot) {
   try {
     const s = JSON.parse(raw);
-
-    // CPU % as fraction of total system capacity (0–100%), matching htop/ubuntu system monitor.
-    // system_cpu_usage is the aggregate across all cores, so cpuDelta/sysDelta is already
-    // normalised — no need to multiply by numCpus.
-    const cpuDelta =
-      s.cpu_stats.cpu_usage.total_usage - s.precpu_stats.cpu_usage.total_usage;
-    const sysDelta =
-      s.cpu_stats.system_cpu_usage - s.precpu_stats.system_cpu_usage;
-    const cpu = sysDelta > 0 ? (cpuDelta / sysDelta) * 100 : 0;
-
-    // Memory (exclude page cache from used)
-    const memUsed = s.memory_stats.usage - (s.memory_stats.stats?.cache ?? 0);
-    const memLimit = s.memory_stats.limit;
+    const { cpu, memUsed, memLimit } = computeCpuMem(s);
 
     // Network — cumulative bytes → per-second rate using wall-clock delta
     const networks = s.networks ?? {};
@@ -34,13 +38,7 @@ function parseStats(raw, slot) {
     slot.prevNetOut = netOut;
     slot.prevTs = now;
 
-    return {
-      cpu: Math.min(100, Math.max(0, cpu)),
-      memUsed,
-      memLimit,
-      netInRate,
-      netOutRate,
-    };
+    return { cpu, memUsed, memLimit, netInRate, netOutRate };
   } catch {
     return null;
   }

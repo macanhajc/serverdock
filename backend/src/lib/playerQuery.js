@@ -6,7 +6,8 @@ const A2S_INFO_REQUEST = Buffer.concat([
   Buffer.from('Source Engine Query\0'),
 ]);
 
-function parseA2SInfo(buf) {
+// Exported for direct unit testing — pure buffer parsing.
+export function parseA2SInfo(buf) {
   // FF FF FF FF 49 [protocol] [name\0] [map\0] [folder\0] [game\0] [appid 2B] [players] [maxPlayers]
   if (buf.length < 12 || buf[4] !== 0x49) return null;
   let offset = 6; // past header(4) + type(1) + protocol(1)
@@ -65,3 +66,11 @@ export function queryA2S(port, timeoutMs = 3000) {
 const cache = new Map();
 export const getPlayers = (id) => cache.get(id) ?? null;
 export const setPlayers = (id, v) => cache.set(id, v);
+
+// In-process RCON player-list cache: gameId → raw command response text | null.
+// Whatever the game's own listCommand prints — there's no universal format to
+// parse across titles, so this is shown as-is rather than turned into a
+// structured name list.
+const listCache = new Map();
+export const getPlayerList = (id) => listCache.get(id) ?? null;
+export const setPlayerList = (id, v) => listCache.set(id, v);

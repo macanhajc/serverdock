@@ -1,21 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Archive, Close, Download, Plus, Save, Trash, Undo } from 'pixelarticons/react';
+import { useAuth } from '../../../../context/AuthContext';
 import { useToast } from '../../../../context/ToastContext';
 import { Button } from '../../../../components/core/Button';
 import { ConfirmModal } from '../../../../components/core/ConfirmModal';
 import { fmtBytes } from '../../../../utils/format';
 import type { BackupEntry } from '../../../../types';
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const s = Math.floor(diff / 1000);
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
+import { relativeTime } from './relativeTime';
+import { useBackups } from '../hooks/useBackups';
+import { useUpdateRetention } from '../hooks/useUpdateRetention';
+import { useCreateBackup } from '../hooks/useCreateBackup';
+import { useRestoreBackup } from '../hooks/useRestoreBackup';
+import { useDeleteBackup } from '../hooks/useDeleteBackup';
+import { useDownloadBackup } from '../hooks/useDownloadBackup';
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -35,155 +33,102 @@ interface BackupTabProps {
 export function BackupTab({ id, token, isRunning }: BackupTabProps) {
   const { t } = useTranslation();
   const { addToast } = useToast();
+  const { hasPermission } = useAuth();
+  const canManage = hasPermission('backups:manage');
 
-  const [backups, setBackups] = useState<BackupEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const [retention, setRetention] = useState(0);
   const [retentionDraft, setRetentionDraft] = useState('0');
-  const [retentionSaving, setRetentionSaving] = useState(false);
+  const hydratedRetention = useRef(false);
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createLabel, setCreateLabel] = useState('');
-  const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
 
   const [confirmDelete, setConfirmDelete] = useState<BackupEntry | null>(null);
   const [confirmRestore, setConfirmRestore] = useState<BackupEntry | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
 
-  useEffect(() => {
-    setLoading(true);
-    fetch(`/api/backups/${id}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data: { backups: BackupEntry[]; retention: number }) => {
-        setBackups(data.backups);
-        setRetention(data.retention);
-        setRetentionDraft(String(data.retention));
-      })
-      .catch(() => setBackups([]))
-      .finally(() => setLoading(false));
-  }, [id, token]);
+  const backupsQuery = useBackups(id, token);
+  const backups = backupsQuery.data?.backups ?? [];
+  const retention = backupsQuery.data?.retention ?? 0;
+  const loading = backupsQuery.isLoading;
 
-  async function saveRetention() {
+  const updateRetention = useUpdateRetention(id, token);
+  const createBackupMutation = useCreateBackup(id, token);
+  const restoreBackupMutation = useRestoreBackup(id, token);
+  const deleteBackupMutation = useDeleteBackup(id, token);
+  const { download, downloadingId, downloadPct } = useDownloadBackup(id, token);
+
+  // Sync the draft from the fetched retention exactly once — after that it's
+  // purely local until saveRetention() either commits or reverts it, same as
+  // the original (a later background refetch, e.g. after creating a backup,
+  // must never clobber an in-progress edit).
+  useEffect(() => {
+    if (backupsQuery.data && !hydratedRetention.current) {
+      setRetentionDraft(String(backupsQuery.data.retention));
+      hydratedRetention.current = true;
+    }
+  }, [backupsQuery.data]);
+
+  function saveRetention() {
     const keep = parseInt(retentionDraft, 10);
     if (isNaN(keep) || keep < 0 || keep === retention) {
       setRetentionDraft(String(retention));
       return;
     }
-    setRetentionSaving(true);
-    try {
-      const res = await fetch(`/api/backups/${id}/retention`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keep }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        setRetention(data.retention);
+    updateRetention.mutate(keep, {
+      onSuccess: (data) => {
         setRetentionDraft(String(data.retention));
-        setBackups(data.backups);
         addToast(t('serverDetail.backupRetentionSaved'));
-      } else {
+      },
+      onError: (err) => {
         setRetentionDraft(String(retention));
-        addToast(data.error ?? t('serverDetail.backupRetentionFailed'), 'error');
-      }
-    } catch {
-      setRetentionDraft(String(retention));
-      addToast(t('serverDetail.backupRetentionFailed'), 'error');
-    } finally {
-      setRetentionSaving(false);
-    }
+        addToast(
+          err instanceof Error && err.message
+            ? err.message
+            : t('serverDetail.backupRetentionFailed'),
+          'error'
+        );
+      },
+    });
   }
 
-  async function createBackup() {
-    setCreating(true);
+  function handleCreateBackup() {
     setCreateError('');
-    try {
-      const res = await fetch(`/api/backups/${id}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label: createLabel.trim() || undefined }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setCreateError(data.error ?? 'Backup failed');
-        return;
-      }
-      setBackups((prev) => [data, ...prev]);
-      setShowCreateForm(false);
-      setCreateLabel('');
-      addToast(t('serverDetail.backupCreated'));
-    } catch {
-      setCreateError('Could not reach server');
-    } finally {
-      setCreating(false);
-    }
+    createBackupMutation.mutate(createLabel, {
+      onSuccess: () => {
+        setShowCreateForm(false);
+        setCreateLabel('');
+        addToast(t('serverDetail.backupCreated'));
+      },
+      onError: (err) =>
+        setCreateError(err instanceof Error && err.message ? err.message : 'Backup failed'),
+    });
   }
 
-  async function doRestore(backup: BackupEntry) {
+  function doRestore(backup: BackupEntry) {
     setActionId(backup.id);
-    try {
-      const res = await fetch(`/api/backups/${id}/${backup.id}/restore`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        addToast(t('serverDetail.backupRestored'));
-      } else {
-        const data = await res.json().catch(() => ({}));
-        addToast(data.error ?? t('serverDetail.backupRestoreFailed'), 'error');
-      }
-    } catch {
-      addToast(t('serverDetail.backupRestoreFailed'), 'error');
-    } finally {
-      setActionId(null);
-    }
+    restoreBackupMutation.mutate(backup.id, {
+      onSuccess: () => addToast(t('serverDetail.backupRestored')),
+      onError: (err) =>
+        addToast(
+          err instanceof Error && err.message ? err.message : t('serverDetail.backupRestoreFailed'),
+          'error'
+        ),
+      onSettled: () => setActionId(null),
+    });
   }
 
-  async function doDelete(backup: BackupEntry) {
+  function doDelete(backup: BackupEntry) {
     setActionId(backup.id);
-    try {
-      const res = await fetch(`/api/backups/${id}/${backup.id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        setBackups((prev) => prev.filter((b) => b.id !== backup.id));
-        addToast(t('serverDetail.backupDeleted'));
-      } else {
-        addToast(t('serverDetail.backupDeleteFailed'), 'error');
-      }
-    } catch {
-      addToast(t('serverDetail.backupDeleteFailed'), 'error');
-    } finally {
-      setActionId(null);
-    }
+    deleteBackupMutation.mutate(backup.id, {
+      onSuccess: () => addToast(t('serverDetail.backupDeleted')),
+      onError: () => addToast(t('serverDetail.backupDeleteFailed'), 'error'),
+      onSettled: () => setActionId(null),
+    });
   }
 
-  // fetch + blob keeps the JWT in a header instead of a download URL
-  async function downloadBackup(backup: BackupEntry) {
-    setActionId(backup.id);
-    try {
-      const res = await fetch(`/api/backups/${id}/${backup.id}/download`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        addToast(t('serverDetail.backupDownloadFailed'), 'error');
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${id}-${backup.id}.tar.gz`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      addToast(t('serverDetail.backupDownloadFailed'), 'error');
-    } finally {
-      setActionId(null);
-    }
+  function downloadBackup(backup: BackupEntry) {
+    download(backup).catch(() => addToast(t('serverDetail.backupDownloadFailed'), 'error'));
   }
 
   const totalSize = backups.reduce((sum, b) => sum + (b.size ?? 0), 0);
@@ -200,15 +145,13 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
           className="ml-auto flex items-center gap-2"
           title={t('serverDetail.backupRetentionHint')}
         >
-          <span className="font-mono text-xs text-ink-3">
-            {t('serverDetail.backupRetention')}
-          </span>
+          <span className="font-mono text-xs text-ink-3">{t('serverDetail.backupRetention')}</span>
           <input
             type="number"
             min={0}
             max={1000}
             value={retentionDraft}
-            disabled={retentionSaving}
+            disabled={updateRetention.isPending || !canManage}
             onChange={(e) => setRetentionDraft(e.target.value)}
             onBlur={saveRetention}
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
@@ -216,15 +159,16 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
             style={{ borderRadius: 0 }}
           />
         </div>
-        {!showCreateForm && (
+        {!showCreateForm && canManage && (
           <Button size="sm" variant="primary" onClick={() => setShowCreateForm(true)}>
+            <Plus width={12} height={12} className="mr-1.5" />
             {t('serverDetail.backupCreate')}
           </Button>
         )}
       </div>
 
       {/* Create form */}
-      {showCreateForm && (
+      {showCreateForm && canManage && (
         <div className="px-6 py-5 border-b border-line bg-bg-1 flex flex-col gap-3">
           {isRunning && (
             <div className="font-mono text-xs text-yellow">
@@ -235,7 +179,7 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
             type="text"
             value={createLabel}
             onChange={(e) => setCreateLabel(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && createBackup()}
+            onKeyDown={(e) => e.key === 'Enter' && handleCreateBackup()}
             placeholder={t('serverDetail.backupLabelPlaceholder')}
             autoFocus
             className="bg-bg-2 border border-line-2 font-mono text-sm text-ink px-3 py-2 outline-none focus:border-accent"
@@ -243,8 +187,14 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
           />
           {createError && <div className="font-mono text-xs text-red">{createError}</div>}
           <div className="flex gap-2">
-            <Button size="sm" variant="primary" disabled={creating} onClick={createBackup}>
-              {creating ? t('serverDetail.backupCreating') : t('common.save')}
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={createBackupMutation.isPending}
+              onClick={handleCreateBackup}
+            >
+              <Save width={12} height={12} className="mr-1.5" />
+              {createBackupMutation.isPending ? t('serverDetail.backupCreating') : t('common.save')}
             </Button>
             <Button
               size="sm"
@@ -255,6 +205,7 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
                 setCreateError('');
               }}
             >
+              <Close width={12} height={12} className="mr-1.5" />
               {t('common.cancel')}
             </Button>
           </div>
@@ -266,15 +217,21 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
         <div className="px-6 py-8 font-mono text-xs text-ink-3">{t('common.loading')}</div>
       ) : backups.length === 0 && !showCreateForm ? (
         <div className="px-6 py-12 flex flex-col items-center gap-4">
-          <p className="font-mono text-sm text-ink-3 text-center">{t('serverDetail.backupEmpty')}</p>
-          <Button variant="primary" onClick={() => setShowCreateForm(true)}>
-            {t('serverDetail.backupCreate')}
-          </Button>
+          <Archive width={24} height={24} className="text-ink-3" />
+          <p className="font-mono text-sm text-ink-3 text-center">
+            {t('serverDetail.backupEmpty')}
+          </p>
+          {canManage && (
+            <Button variant="primary" onClick={() => setShowCreateForm(true)}>
+              <Plus width={12} height={12} className="mr-1.5" />
+              {t('serverDetail.backupCreate')}
+            </Button>
+          )}
         </div>
       ) : (
         <div className="divide-y divide-line">
           {backups.map((b) => {
-            const busy = actionId === b.id;
+            const busy = actionId === b.id || downloadingId === b.id;
             const displayName = b.label ?? fmtDate(b.createdAt);
             return (
               <div key={b.id} className="flex items-center gap-4 px-6 py-3.5 hover:bg-bg-2">
@@ -283,31 +240,44 @@ export function BackupTab({ id, token, isRunning }: BackupTabProps) {
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     <span className="font-mono text-xs text-ink-2">{fmtDate(b.createdAt)}</span>
                     <span className="font-mono text-xs text-ink-3">·</span>
-                    <span className="font-mono text-xs text-ink-3">{relativeTime(b.createdAt)}</span>
+                    <span className="font-mono text-xs text-ink-3">
+                      {relativeTime(b.createdAt)}
+                    </span>
                     <span className="font-mono text-xs text-ink-3">·</span>
                     <span className="font-mono text-xs text-ink-3">{fmtBytes(b.size)}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <Button size="sm" onClick={() => downloadBackup(b)} disabled={busy}>
-                    {t('serverDetail.backupDownload')}
+                    <Download width={12} height={12} className="mr-1.5" />
+                    {downloadingId === b.id && downloadPct != null
+                      ? t('serverDetail.backupDownloading', { pct: downloadPct })
+                      : t('serverDetail.backupDownload')}
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    onClick={() => setConfirmRestore(b)}
-                    disabled={busy}
-                  >
-                    {busy ? t('serverDetail.backupRestoring') : t('serverDetail.backupRestore')}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    onClick={() => setConfirmDelete(b)}
-                    disabled={busy}
-                  >
-                    {t('common.delete')}
-                  </Button>
+                  {canManage && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => setConfirmRestore(b)}
+                        disabled={busy}
+                      >
+                        <Undo width={12} height={12} className="mr-1.5" />
+                        {actionId === b.id && restoreBackupMutation.isPending
+                          ? t('serverDetail.backupRestoring')
+                          : t('serverDetail.backupRestore')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        onClick={() => setConfirmDelete(b)}
+                        disabled={busy}
+                      >
+                        <Trash width={12} height={12} className="mr-1.5" />
+                        {t('common.delete')}
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             );

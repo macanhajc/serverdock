@@ -1,20 +1,51 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
+import { Check, ChevronDown, ChevronUp, Copy, Send as SendIcon, Trash } from 'pixelarticons/react';
 import socket from '../../../../socket';
 import { Button } from '../../../../components/core/Button';
 import { Toggle } from '../../../../components/core/Toggle';
 import { LogLine as LogLineComp } from '../../../../components/data/LogLine';
 import { SegmentedControl } from '../../../../components/forms/SegmentedControl';
 import type { Server, LogLine, RconEntry } from '../../../../types';
+import { useRconCommand } from '../hooks/useRconCommand';
 
 function nowTs(): string {
   return new Date().toTimeString().slice(0, 8);
+}
+
+// Splits `text` around case-insensitive matches of `query`, wrapping each in
+// <mark>. Virtuoso only ever has the visible rows mounted, so this only runs
+// against whatever's currently rendered — matches off-screen are found via
+// matchIndices/scrollToIndex instead, since the browser's own Ctrl+F can't
+// see rows that aren't in the DOM.
+function highlightMatches(text: string, query: string): ReactNode {
+  if (!query) return text;
+  const lower = text.toLowerCase();
+  const q = query.toLowerCase();
+  const parts: ReactNode[] = [];
+  let i = 0;
+  let idx = lower.indexOf(q, i);
+  while (idx !== -1) {
+    if (idx > i) parts.push(text.slice(i, idx));
+    parts.push(
+      <mark key={idx} className="bg-yellow text-black">
+        {text.slice(idx, idx + query.length)}
+      </mark>
+    );
+    i = idx + query.length;
+    idx = lower.indexOf(q, i);
+  }
+  if (i < text.length) parts.push(text.slice(i));
+  return parts;
 }
 
 interface ConsoleTabProps {
   id: string;
   token: string | null;
   isRunning: boolean;
+  /** console:write permission — gates sending input, not viewing output */
+  canWrite: boolean;
   rcon?: Server['rcon'];
   /** The tab stays mounted in the background; true when it's the active tab */
   visible?: boolean;
@@ -27,6 +58,7 @@ export function ConsoleTab({
   id,
   token,
   isRunning,
+  canWrite,
   rcon,
   visible = true,
   lines,
@@ -43,7 +75,9 @@ export function ConsoleTab({
   const [consoleInput, setConsoleInput] = useState('');
   const [cmdHistory, setCmdHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
-  const termRef = useRef<HTMLDivElement>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [matchCursor, setMatchCursor] = useState(0);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
 
   // RCON view — request/response pairs, separate from stdout
   const [rconHistory, setRconHistory] = useState<RconEntry[]>([]);
@@ -53,21 +87,66 @@ export function ConsoleTab({
   const [rconHistoryIdx, setRconHistoryIdx] = useState(-1);
   const rconTermRef = useRef<HTMLDivElement>(null);
   const rconSeqRef = useRef<number>(0);
+  const rconCommand = useRconCommand(id, token);
+
+  // Quick action — broadcast template configured per-game (rcon.commands.broadcast)
+  const [broadcastInput, setBroadcastInput] = useState('');
 
   const filteredLines =
     levelFilter === 'ALL'
       ? lines
-      : lines.filter(
-          (l) => l.level === levelFilter || l.level === 'DEBUG' || l.level === 'CMD'
-        );
+      : lines.filter((l) => l.level === levelFilter || l.level === 'DEBUG' || l.level === 'CMD');
 
-  // `visible` is a dep: scrollHeight is 0 while the tab is display:none, so the
-  // scroll must be re-applied when it becomes visible again
+  const trimmedQuery = searchQuery.trim();
+  const matchIndices = useMemo(() => {
+    if (!trimmedQuery) return [];
+    const q = trimmedQuery.toLowerCase();
+    const idxs: number[] = [];
+    filteredLines.forEach((l, i) => {
+      if (l.line.toLowerCase().includes(q)) idxs.push(i);
+    });
+    return idxs;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredLines.length, lines, trimmedQuery]);
+
+  // Jump to the first match when the query itself changes — but not on every
+  // recount caused by a new line arriving, which would yank the view away
+  // from wherever the admin is currently looking.
   useEffect(() => {
-    if (visible && autoscroll && consoleMode === 'terminal' && termRef.current) {
-      termRef.current.scrollTop = termRef.current.scrollHeight;
+    setMatchCursor(0);
+    if (matchIndices.length > 0) {
+      virtuosoRef.current?.scrollToIndex({ index: matchIndices[0], align: 'center' });
     }
-  }, [lines, autoscroll, visible, consoleMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trimmedQuery]);
+
+  function goToMatch(delta: number) {
+    if (matchIndices.length === 0) return;
+    const next = (matchCursor + delta + matchIndices.length) % matchIndices.length;
+    setMatchCursor(next);
+    virtuosoRef.current?.scrollToIndex({ index: matchIndices[next], align: 'center' });
+  }
+
+  function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      goToMatch(e.shiftKey ? -1 : 1);
+    } else if (e.key === 'Escape') {
+      setSearchQuery('');
+    }
+  }
+
+  // Virtuoso's followOutput handles auto-scroll while streaming, but a
+  // display:none tab renders at zero height, so scrollTop changes made while
+  // hidden are lost — re-apply once the tab becomes visible again.
+  useEffect(() => {
+    if (visible && autoscroll && consoleMode === 'terminal' && filteredLines.length > 0) {
+      virtuosoRef.current?.scrollToIndex({ index: filteredLines.length - 1, align: 'end' });
+    }
+    // Only the "just became visible" transition needs this — ongoing
+    // streaming auto-scroll is handled by followOutput.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   useEffect(() => {
     if (visible && consoleMode === 'rcon' && rconTermRef.current) {
@@ -77,7 +156,7 @@ export function ConsoleTab({
 
   function sendConsoleCommand() {
     const cmd = consoleInput.trim();
-    if (!cmd || !isRunning) return;
+    if (!cmd || !isRunning || !canWrite) return;
     socket.emit('console:input', { id, input: cmd });
     // Echo into the shared output stream so the command and its log output interleave
     setLines((prev) => [...prev, { ts: nowTs(), level: 'CMD', line: `> ${cmd}` }]);
@@ -115,10 +194,7 @@ export function ConsoleTab({
     });
   }
 
-  async function sendRcon() {
-    const cmd = rconInput.trim();
-    if (!cmd || rconSending || !isRunning) return;
-
+  async function sendRconCommand(cmd: string) {
     const seq = ++rconSeqRef.current;
     setRconHistory((prev) => [
       ...prev,
@@ -126,32 +202,31 @@ export function ConsoleTab({
     ]);
     setRconCmdHistory((prev) => [cmd, ...prev.slice(0, 49)]);
     setRconHistoryIdx(-1);
-    setRconInput('');
     setRconSending(true);
 
     try {
-      const res = await fetch(`/api/servers/${id}/rcon`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: cmd }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        setRconHistory((prev) =>
-          prev.map((e) => (e.seq === seq ? { ...e, response: data.response } : e))
-        );
-      } else {
-        setRconHistory((prev) =>
-          prev.map((e) => (e.seq === seq ? { ...e, error: data.error ?? 'Command failed' } : e))
-        );
-      }
-    } catch {
-      setRconHistory((prev) =>
-        prev.map((e) => (e.seq === seq ? { ...e, error: 'Could not reach server' } : e))
-      );
+      const response = await rconCommand.mutateAsync(cmd);
+      setRconHistory((prev) => prev.map((e) => (e.seq === seq ? { ...e, response } : e)));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not reach server';
+      setRconHistory((prev) => prev.map((e) => (e.seq === seq ? { ...e, error: message } : e)));
     } finally {
       setRconSending(false);
     }
+  }
+
+  function sendRcon() {
+    const cmd = rconInput.trim();
+    if (!cmd || rconSending || !isRunning || !canWrite) return;
+    setRconInput('');
+    sendRconCommand(cmd);
+  }
+
+  function sendBroadcast() {
+    const text = broadcastInput.trim();
+    if (!text || rconSending || !isRunning || !canWrite || !rcon?.commands?.broadcast) return;
+    setBroadcastInput('');
+    sendRconCommand(rcon.commands.broadcast.replace('{message}', text));
   }
 
   function onRconKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -207,6 +282,47 @@ export function ConsoleTab({
                 </button>
               ))}
             </div>
+
+            <div className="flex items-center gap-1.5">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={onSearchKeyDown}
+                placeholder={t('serverDetail.searchPlaceholder')}
+                spellCheck={false}
+                className="bg-bg-2 border border-line text-ink placeholder:text-ink-3 font-mono text-xs px-2 py-1 outline-none focus:border-[var(--focus-border)] w-40"
+              />
+              {trimmedQuery && (
+                <>
+                  <span className="font-mono text-[11px] text-ink-3 whitespace-nowrap">
+                    {matchIndices.length > 0
+                      ? t('serverDetail.searchMatchCount', {
+                          current: matchCursor + 1,
+                          total: matchIndices.length,
+                        })
+                      : t('serverDetail.searchNoMatches')}
+                  </span>
+                  <button
+                    onClick={() => goToMatch(-1)}
+                    disabled={matchIndices.length === 0}
+                    title={t('serverDetail.searchPrev')}
+                    className="font-mono text-xs text-ink-3 hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed px-1.5 py-1 border border-line bg-bg-2 cursor-pointer"
+                  >
+                    <ChevronUp width={11} height={11} />
+                  </button>
+                  <button
+                    onClick={() => goToMatch(1)}
+                    disabled={matchIndices.length === 0}
+                    title={t('serverDetail.searchNext')}
+                    className="font-mono text-xs text-ink-3 hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed px-1.5 py-1 border border-line bg-bg-2 cursor-pointer"
+                  >
+                    <ChevronDown width={11} height={11} />
+                  </button>
+                </>
+              )}
+            </div>
+
             <div className="ml-auto flex items-center gap-3.5">
               <span className="font-mono text-sm text-ink-3">
                 {levelFilter === 'ALL'
@@ -227,9 +343,15 @@ export function ConsoleTab({
                 onClick={copyLogs}
                 disabled={filteredLines.length === 0}
               >
+                {copied ? (
+                  <Check width={12} height={12} className="mr-1.5" />
+                ) : (
+                  <Copy width={12} height={12} className="mr-1.5" />
+                )}
                 {copied ? t('serverDetail.copied') : t('serverDetail.copyLogs')}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setLines([])}>
+                <Trash width={12} height={12} className="mr-1.5" />
                 {t('serverDetail.clear')}
               </Button>
             </div>
@@ -237,22 +359,57 @@ export function ConsoleTab({
         )}
 
         {consoleMode === 'rcon' && (
-          <span className="font-mono text-[11px] text-ink-3">{t('serverDetail.rconHint')}</span>
+          <>
+            <span className="font-mono text-[11px] text-ink-3">{t('serverDetail.rconHint')}</span>
+
+            {rcon?.commands?.broadcast && (
+              <div className="border-l border-line pl-4 ml-auto flex items-center gap-2">
+                <input
+                  type="text"
+                  value={broadcastInput}
+                  onChange={(e) => setBroadcastInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && sendBroadcast()}
+                  disabled={!isRunning || !canWrite || rconSending}
+                  placeholder={t('serverDetail.broadcastPlaceholder')}
+                  spellCheck={false}
+                  className="bg-bg-2 h-[34px] border border-line text-ink placeholder:text-ink-3 font-mono text-xs px-2 py-1 outline-none focus:border-[var(--focus-border)] w-56 disabled:opacity-40"
+                />
+                <Button
+                  size="sm"
+                  variant="primary"
+                  disabled={!isRunning || !canWrite || rconSending || !broadcastInput.trim()}
+                  onClick={sendBroadcast}
+                >
+                  {t('serverDetail.broadcastAction')}
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {consoleMode === 'terminal' && (
         <>
-          <div ref={termRef} className="flex-1 overflow-y-auto bg-bg-terminal p-[14px_20px]">
-            {filteredLines.length === 0 && (
+          {filteredLines.length === 0 ? (
+            <div className="flex-1 bg-bg-terminal p-[14px_20px]">
               <span className="font-mono text-xs text-ink-3">{t('serverDetail.waitingLogs')}</span>
-            )}
-            {filteredLines.map((l, i) => (
-              <LogLineComp key={i} ts={l.ts} level={l.level}>
-                {l.line}
-              </LogLineComp>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <Virtuoso
+              ref={virtuosoRef}
+              className="flex-1 bg-bg-terminal"
+              style={{ padding: '14px 20px' }}
+              data={filteredLines}
+              followOutput={autoscroll}
+              initialTopMostItemIndex={filteredLines.length - 1}
+              computeItemKey={(index) => index}
+              itemContent={(_index, l) => (
+                <LogLineComp ts={l.ts} level={l.level}>
+                  {trimmedQuery ? highlightMatches(l.line, trimmedQuery) : l.line}
+                </LogLineComp>
+              )}
+            />
+          )}
           <div className="flex items-center gap-0 border-t border-line bg-bg-1 flex-none">
             <span className="font-mono text-sm text-ink-3 px-4 shrink-0 select-none">›</span>
             <input
@@ -260,18 +417,23 @@ export function ConsoleTab({
               value={consoleInput}
               onChange={(e) => setConsoleInput(e.target.value)}
               onKeyDown={onConsoleKeyDown}
-              disabled={!isRunning}
+              disabled={!isRunning || !canWrite}
               placeholder={
-                isRunning ? t('serverDetail.consolePlaceholder') : t('serverDetail.consoleNotRunning')
+                !canWrite
+                  ? t('serverDetail.consoleNoPermission')
+                  : isRunning
+                    ? t('serverDetail.consolePlaceholder')
+                    : t('serverDetail.consoleNotRunning')
               }
               spellCheck={false}
               className="flex-1 bg-transparent font-mono text-[12.5px] text-ink placeholder:text-ink-3 outline-none py-3 pr-3 min-w-0 disabled:opacity-40 disabled:cursor-not-allowed"
             />
             <button
               onClick={sendConsoleCommand}
-              disabled={!isRunning || !consoleInput.trim()}
-              className="font-mono text-xs text-ink-3 hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed px-4 py-3 border-l border-line cursor-pointer shrink-0"
+              disabled={!isRunning || !canWrite || !consoleInput.trim()}
+              className="inline-flex items-center gap-1.5 font-mono text-xs text-ink-3 hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed px-4 py-3 border-l border-line cursor-pointer shrink-0"
             >
+              <SendIcon width={12} height={12} />
               Send
             </button>
           </div>
@@ -282,7 +444,9 @@ export function ConsoleTab({
         <>
           <div ref={rconTermRef} className="flex-1 overflow-y-auto bg-bg-terminal p-[14px_20px]">
             {!isRunning && (
-              <span className="font-mono text-xs text-ink-3">{t('serverDetail.consoleNotRunning')}</span>
+              <span className="font-mono text-xs text-ink-3">
+                {t('serverDetail.consoleNotRunning')}
+              </span>
             )}
             {isRunning && rconHistory.length === 0 && (
               <span className="font-mono text-xs text-ink-3">{t('serverDetail.rconWaiting')}</span>
@@ -315,19 +479,24 @@ export function ConsoleTab({
               value={rconInput}
               onChange={(e) => setRconInput(e.target.value)}
               onKeyDown={onRconKeyDown}
-              disabled={!isRunning || rconSending}
+              disabled={!isRunning || !canWrite || rconSending}
               placeholder={
-                isRunning ? t('serverDetail.rconPlaceholder') : t('serverDetail.consoleNotRunning')
+                !canWrite
+                  ? t('serverDetail.consoleNoPermission')
+                  : isRunning
+                    ? t('serverDetail.rconPlaceholder')
+                    : t('serverDetail.consoleNotRunning')
               }
               spellCheck={false}
               className="flex-1 bg-transparent font-mono text-[12.5px] text-ink placeholder:text-ink-3 outline-none py-3 pr-3 min-w-0 disabled:opacity-40 disabled:cursor-not-allowed"
             />
             <button
               onClick={sendRcon}
-              disabled={!isRunning || !rconInput.trim() || rconSending}
-              className="font-mono text-xs text-ink-3 hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed px-4 py-3 border-l border-line cursor-pointer shrink-0"
+              disabled={!isRunning || !canWrite || !rconInput.trim() || rconSending}
+              className="inline-flex items-center gap-1.5 font-mono text-xs text-ink-3 hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed px-4 py-3 border-l border-line cursor-pointer shrink-0"
             >
-              {rconSending ? '…' : 'Send'}
+              {rconSending ? '…' : <SendIcon width={12} height={12} />}
+              {rconSending ? '' : 'Send'}
             </button>
           </div>
         </>

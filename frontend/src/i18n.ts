@@ -3,7 +3,7 @@ import { initReactI18next } from 'react-i18next';
 import en from './locales/en.json';
 import ptBR from './locales/pt-BR.json';
 
-const saved = localStorage.getItem('sd_lang') ?? 'pt';
+const saved = localStorage.getItem('sd_lang') ?? 'pt-BR';
 
 i18n.use(initReactI18next).init({
   resources: {
@@ -11,7 +11,7 @@ i18n.use(initReactI18next).init({
     'pt-BR': { translation: ptBR },
   },
   lng: saved,
-  fallbackLng: 'pt',
+  fallbackLng: 'pt-BR',
   interpolation: { escapeValue: false },
 });
 

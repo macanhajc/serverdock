@@ -5,7 +5,17 @@ frontend/dist/
 backend/dist/
 backend/.env
 backend/auth.json
+backend/auth.json.migrated
 backend/visitors.json
+backend/visitors.json.migrated
+backend/blocklist.json
+backend/blocklist.json.migrated
+backend/serverdock.db
+backend/serverdock.db-wal
+backend/serverdock.db-shm
+backend/settings.json
 backend/games/*/data/
 backend/games/*/backups/
+backend/coverage/
 *.log
+.local-docker-test/

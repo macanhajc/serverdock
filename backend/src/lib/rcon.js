@@ -6,7 +6,9 @@ const PACKET_AUTH_RESPONSE = 2;
 const PACKET_COMMAND = 2;
 const PACKET_COMMAND_RESPONSE = 0;
 
-function encodePacket(id, type, payload) {
+// Exported for direct unit testing — pure buffer framing, no need for a real
+// socket/Docker container to exercise the Source-RCON wire format.
+export function encodePacket(id, type, payload) {
   const body = Buffer.from(payload, 'utf8');
   const size = 4 + 4 + body.length + 2;
   const buf = Buffer.alloc(4 + size);
@@ -19,7 +21,7 @@ function encodePacket(id, type, payload) {
 }
 
 // Pulls one length-prefixed packet off the front of buf, if a full one has arrived.
-function readPacket(buf) {
+export function readPacket(buf) {
   if (buf.length < 4) return null;
   const size = buf.readInt32LE(0);
   const total = 4 + size;
@@ -38,16 +40,23 @@ export async function sendRconCommand(game, command) {
   const container = docker.getContainer(`serverdock-${game.id}`);
   const info = await container.inspect();
 
-  // Prefer default bridge IP; fall back to first named network
-  let ip = info.NetworkSettings.IPAddress;
-  if (!ip) {
-    const nets = Object.values(info.NetworkSettings.Networks ?? {});
-    ip = nets[0]?.IPAddress;
+  // Dial the published host port rather than the container's internal Docker
+  // network IP: that IP only lives inside the Docker daemon's own network
+  // namespace, which host-side Node cannot route to under Docker Desktop
+  // (Windows/macOS) — the daemon's userland-proxy/NAT is the only path in.
+  // Requires the rcon port to be listed in the game's `ports` config so it
+  // actually gets published (HostConfig.PortBindings) at container creation.
+  const binding = info.NetworkSettings.Ports?.[`${game.rcon.port}/tcp`]?.[0];
+  if (!binding) {
+    throw new Error(
+      `RCON port ${game.rcon.port}/tcp is not published — add it to the game's port list and restart the server`
+    );
   }
-  if (!ip) throw new Error('Cannot determine container IP');
+  const host = !binding.HostIp || binding.HostIp === '0.0.0.0' || binding.HostIp === '::' ? '127.0.0.1' : binding.HostIp;
+  const port = Number(binding.HostPort);
 
   return new Promise((resolve, reject) => {
-    const socket = net.connect({ host: ip, port: game.rcon.port });
+    const socket = net.connect({ host, port });
     let buf = Buffer.alloc(0);
     let authenticated = false;
     let settled = false;

@@ -1,5 +1,6 @@
-import { useTranslation } from "react-i18next";
-import { PortFormRow } from "../../../../types";
+import { useTranslation } from 'react-i18next';
+import { Trash } from 'pixelarticons/react';
+import { PortFormRow } from '../../../../types';
 
 interface PortRowProps {
   port: PortFormRow;
@@ -11,7 +12,8 @@ interface PortRowProps {
 
 export function PortRow({ port, idx, onChange, onRemove, conflictsWith }: PortRowProps) {
   const { t } = useTranslation();
-  const base = 'bg-bg-1 border text-ink px-3 py-2 font-mono text-sm w-full outline-none focus:bg-bg-2';
+  const base =
+    'bg-bg-1 border text-ink px-3 py-2 font-mono text-sm w-full outline-none focus:bg-bg-2';
   const normal = `${base} border-line focus:border-[var(--focus-border)]`;
   const conflict = `${base} border-yellow/70 focus:border-yellow`;
 
@@ -49,7 +51,7 @@ export function PortRow({ port, idx, onChange, onRemove, conflictsWith }: PortRo
           onClick={() => onRemove(idx)}
           className="h-9 flex items-center justify-center bg-bg-1 border border-line text-ink-3 cursor-pointer hover:text-red"
         >
-          X
+          <Trash width={14} height={14} />
         </button>
       </div>
       {conflictsWith && (

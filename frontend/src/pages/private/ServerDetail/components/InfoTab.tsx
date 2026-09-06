@@ -1,64 +1,21 @@
-import { useState } from 'react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ExternalLink, User } from 'pixelarticons/react';
 import { CopyButton } from '../../../../components/core/CopyButton';
 import { UptimeTicker } from '../../../../components/core/UptimeTicker';
-import { copyText } from '../../../../utils/clipboard';
 import { timeAgo } from '../../../../utils/format';
 import type { Server } from '../../../../types';
-import { gameHue, gameMark } from '../../../../utils/serverStatus';
-
-// ─── InfoRow ──────────────────────────────────────────────────────────────────
-
-interface InfoRowProps {
-  label: string;
-  value: React.ReactNode;
-  mono?: boolean;
-  suffix?: React.ReactNode;
-  copyable?: boolean;
-}
-
-function InfoRow({ label, value, mono, suffix, copyable }: InfoRowProps) {
-  const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
-
-  function handleCopy() {
-    copyText(String(value));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }
-
-  return (
-    <div className="group flex">
-      <span className="font-mono bg-bg-1 text-[11px] text-ink-3 px-4 py-2.5 border-r border-line uppercase tracking-wider w-32 shrink-0">
-        {label}
-      </span>
-      <span
-        className={`flex-1 min-w-0 text-sm text-ink truncate px-4 py-2.5 ${mono ? 'font-mono' : ''}`}
-      >
-        {value}
-        {suffix}
-      </span>
-      {copyable && (
-        <button
-          onClick={handleCopy}
-          className="opacity-0 group-hover:opacity-100 font-mono text-[11px] text-ink-3 hover:text-ink px-2 py-0.5 border border-line bg-bg-2 cursor-pointer transition-opacity shrink-0"
-        >
-          {copied ? '✓' : t('common.copy')}
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ─── SectionTitle ─────────────────────────────────────────────────────────────
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="font-mono text-xs text-ink-3 tracking-widest uppercase mb-2 px-1">
-      {children}
-    </div>
-  );
-}
+import {
+  gameHue,
+  gameMark,
+  getDisplayPlayerCount,
+  splitPlayerListEntries,
+} from '../../../../utils/serverStatus';
+import { BuildSection } from './BuildSection';
+import { SectionTitle } from './SectionTitle';
+import { InfoRow } from './InfoRow';
+import { UpdateCheckRow } from './UpdateCheckRow';
+import { EventHistorySection } from './EventHistorySection';
 
 function fmtWhen(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
@@ -69,14 +26,13 @@ function fmtWhen(iso: string) {
   });
 }
 
-// ─── InfoTab ──────────────────────────────────────────────────────────────────
-
 interface InfoTabProps {
   server: Server;
   id: string;
+  token: string | null;
 }
 
-export function InfoTab({ server, id }: InfoTabProps) {
+export function InfoTab({ server, id, token }: InfoTabProps) {
   const { t } = useTranslation();
 
   const {
@@ -87,7 +43,6 @@ export function InfoTab({ server, id }: InfoTabProps) {
     ports,
     dataMount,
     pinnedEnv,
-    players,
     query,
     rcon,
     startedAt,
@@ -95,8 +50,15 @@ export function InfoTab({ server, id }: InfoTabProps) {
     status,
   } = server;
 
+  const playerListEntries = useMemo(
+    () => (server.playerList ? splitPlayerListEntries(server.playerList) : []),
+    [server.playerList]
+  );
+
+  const displayPlayers = getDisplayPlayerCount(server);
+
   const playersHint =
-    players != null
+    displayPlayers != null
       ? t('serverDetail.infoOnline')
       : status !== 'running'
         ? t('serverDetail.infoOffline')
@@ -107,7 +69,6 @@ export function InfoTab({ server, id }: InfoTabProps) {
   return (
     <div className="h-full overflow-y-auto p-6 container">
       <div className="flex flex-col gap-8">
-
         <div className="w-full h-96 shrink-0 border border-line overflow-hidden grid place-items-center">
           {server.avatarUrl ? (
             <img src={server.avatarUrl} alt="" className="w-full h-full object-cover" />
@@ -134,33 +95,103 @@ export function InfoTab({ server, id }: InfoTabProps) {
         )}
 
         {server.storeUrl && (
-          <section>
+          <section className="-mt-2">
             <SectionTitle>{t('gameForm.fieldStoreUrl')}</SectionTitle>
             <div className="border border-line bg-bg-1 px-4 py-3">
-              <a href={server.storeUrl} target="_blank" className="underline font-mono text-sm text-ink-2 leading-relaxed m-0">{server.storeUrl}</a>
+              <a
+                href={server.storeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 underline font-mono text-sm text-ink-2 leading-relaxed m-0"
+              >
+                {server.storeUrl}
+                <ExternalLink width={12} height={12} />
+              </a>
             </div>
           </section>
         )}
 
         {connection && (
-          <section>
-            <SectionTitle>{t('serverDetail.infoConnection')}</SectionTitle>
-            <div className="border border-line bg-bg-1 px-5 py-4 flex items-center gap-5">
-              <div className="flex-1 min-w-0">
-                <div className="font-mono text-xl font-bold text-ink leading-tight">
-                  {connection.host}:{connection.port}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-line pt-6">
+            {/* Connection info */}
+            <section>
+              <SectionTitle>{t('serverDetail.infoConnection')}</SectionTitle>
+              <div className="border border-line bg-bg-1 px-5 py-4 flex items-center gap-5">
+                <div className="flex-1 min-w-0">
+                  <div className="font-mono text-xl font-bold text-ink leading-tight">
+                    {connection.host}:{connection.port}
+                  </div>
+                  <div className="font-mono text-xs text-ink-3 mt-1">
+                    {t('serverDetail.infoShareHint')}
+                  </div>
                 </div>
-                <div className="font-mono text-xs text-ink-3 mt-1">
-                  {t('serverDetail.infoShareHint')}
-                </div>
+                <CopyButton
+                  text={`${connection.host}:${connection.port}`}
+                  className="px-3 py-1.5 shrink-0"
+                />
               </div>
-              <CopyButton
-                text={`${connection.host}:${connection.port}`}
-                className="px-3 py-1.5 shrink-0"
-              />
-            </div>
-          </section>
+            </section>
+
+            {/* Uptime / Last Active */}
+            <section>
+              <SectionTitle>
+                {startedAt ? t('serverDetail.infoUptime') : t('serverDetail.infoLastActive')}
+              </SectionTitle>
+              <div className="border border-line bg-bg-1 px-5 py-4 flex flex-col">
+                {startedAt ? (
+                  <>
+                    <span className="font-mono text-xl font-bold text-ink leading-tight">
+                      <UptimeTicker startedAt={startedAt} />
+                    </span>
+                    <span className="font-mono text-xs text-ink-3 mt-1">
+                      {t('serverDetail.infoSince', { when: fmtWhen(startedAt) })}
+                    </span>
+                  </>
+                ) : lastActiveAt ? (
+                  <>
+                    <span className="font-mono text-xl font-bold text-ink leading-tight">
+                      {timeAgo(lastActiveAt, t)}
+                    </span>
+                    <span className="font-mono text-xs text-ink-3 mt-1">
+                      {fmtWhen(lastActiveAt)}
+                    </span>
+                  </>
+                ) : (
+                  <span className="font-mono text-xl font-bold text-ink leading-tight">—</span>
+                )}
+              </div>
+            </section>
+          </div>
         )}
+
+        {/* Players */}
+        <section className="border-t border-line pt-6">
+          <SectionTitle>{t('serverDetail.infoPlayers')}</SectionTitle>
+          <div className="border border-line px-5 py-4 flex items-center gap-3">
+            <span className="font-mono text-2xl font-bold text-ink">
+              {displayPlayers != null ? displayPlayers : '—'}
+            </span>
+            <span className="font-mono text-xs text-ink-3">{playersHint}</span>
+          </div>
+          {playerListEntries.length > 0 && (
+            <div className="border border-t-0 border-line px-5 py-3">
+              <div className="font-mono text-[10px] tracking-[.08em] uppercase text-ink-3 mb-2">
+                {t('serverDetail.infoPlayerListTitle')}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {playerListEntries.map((entry, i) => (
+                  <div
+                    key={i}
+                    className="flex py-2 gap-2 px-2 items-center text-ink-2 hover:text-ink bg-bg-1 border border-line hover:border-line-2"
+                  >
+                    <User width={12} height={12} />
+                    <span className="font-mono text-xs">{entry}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-line pt-6">
           {/* Configuration */}
@@ -191,6 +222,7 @@ export function InfoTab({ server, id }: InfoTabProps) {
                 }
               />
               <InfoRow label={t('serverDetail.infoDataMount')} value={dataMount ?? '/data'} mono />
+              {imageSource === 'public' && <UpdateCheckRow id={id} token={token} />}
             </div>
           </section>
 
@@ -245,49 +277,7 @@ export function InfoTab({ server, id }: InfoTabProps) {
           </section>
         </div>
 
-        {/* Runtime stats row */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-line pt-6">
-          {/* Players */}
-          <section>
-            <SectionTitle>{t('serverDetail.infoPlayers')}</SectionTitle>
-            <div className="border border-line px-5 py-4 flex items-center gap-3">
-              <span className="font-mono text-2xl font-bold text-ink">
-                {players != null ? players : '—'}
-              </span>
-              <span className="font-mono text-xs text-ink-3">{playersHint}</span>
-            </div>
-          </section>
-
-          {/* Uptime / Last Active */}
-          <section>
-            <SectionTitle>
-              {startedAt ? t('serverDetail.infoUptime') : t('serverDetail.infoLastActive')}
-            </SectionTitle>
-            <div className="border border-line px-5 py-4 flex items-center gap-3">
-              {startedAt ? (
-                <>
-                  <span className="font-mono text-2xl font-bold text-ink tabular-nums">
-                    <UptimeTicker startedAt={startedAt} />
-                  </span>
-                  <span className="font-mono text-xs text-ink-3">
-                    {t('serverDetail.infoSince', { when: fmtWhen(startedAt) })}
-                  </span>
-                </>
-              ) : lastActiveAt ? (
-                <>
-                  <span className="font-mono text-2xl font-bold text-ink tabular-nums">
-                    {timeAgo(lastActiveAt, t)}
-                  </span>
-                  <span className="font-mono text-xs text-ink-3">{fmtWhen(lastActiveAt)}</span>
-                </>
-              ) : (
-                <span className="font-mono text-2xl font-bold text-ink tabular-nums">—</span>
-              )}
-            </div>
-          </section>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-line pt-6 pb-6">
           {(pinnedEnv?.length ?? 0) > 0 && (
             <section>
               <SectionTitle>{t('serverDetail.infoSectionEnv')}</SectionTitle>
@@ -348,6 +338,12 @@ export function InfoTab({ server, id }: InfoTabProps) {
             </div>
           </section>
         </div>
+
+        {imageSource === 'local' && (
+          <BuildSection id={id} token={token} imageBuilt={server.imageBuilt} />
+        )}
+
+        <EventHistorySection id={id} token={token} />
       </div>
     </div>
   );

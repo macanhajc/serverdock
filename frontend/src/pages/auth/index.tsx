@@ -4,6 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { TextField } from '../../components/forms/TextField';
 import { LangSwitcher } from '../../components/core/LangSwitcher';
+import { usePublicSettings } from './hooks/usePublicSettings';
+import { useVisitorAutoLogin } from './hooks/useVisitorAutoLogin';
+import { useVisitorRegister } from './hooks/useVisitorRegister';
+import { useAdminLogin } from './hooks/useAdminLogin';
 
 type LoginMode = 'visitor' | 'admin';
 
@@ -27,44 +31,26 @@ export default function Auth() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [registrationOpen, setRegistrationOpen] = useState(true);
 
   useEffect(() => {
     if (isAuthenticated) navigate('/admin', { replace: true });
   }, [isAuthenticated, navigate]);
 
-  useEffect(() => {
-    const token = localStorage.getItem('sd_visitor_token');
-    if (!token || mode === 'admin') return;
-    fetch('/api/visitors/identify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
-    })
-      .then(async (r) => {
-        if (r.status === 403) {
-          const body = await r.json().catch(() => ({}));
-          if (body.error === 'blocked') navigate('/blocked', { replace: true });
-          return;
-        }
-        if (r.ok) {
-          const data = await r.json();
-          if (data) navigate('/', { replace: true });
-        }
-      })
-      .catch(() => {});
-  }, [mode, navigate]);
+  useVisitorAutoLogin(mode);
+  const settingsQuery = usePublicSettings(mode === 'visitor');
+  const visitorRegister = useVisitorRegister();
+  const adminLogin = useAdminLogin();
 
-  useEffect(() => {
-    if (mode !== 'visitor') return;
-    fetch('/api/settings/public')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data) setRegistrationOpen(data.registrationOpen);
-      })
-      .catch(() => {});
-  }, [mode]);
+  // A 403 "registration closed" rejection overrides the last known settings
+  // value for the rest of this visitor-mode session, same as the original —
+  // switching to admin and back to visitor resets it so the next fresh
+  // settings fetch (re-triggered by that round trip) is trusted again.
+  const registrationOpen =
+    visitorRegister.data?.kind === 'registrationClosed'
+      ? false
+      : (settingsQuery.data?.registrationOpen ?? true);
+
+  const loading = visitorRegister.isPending || adminLogin.isPending;
 
   function switchMode(m: LoginMode) {
     setMode(m);
@@ -72,6 +58,7 @@ export default function Auth() {
     setName('');
     setUsername('');
     setPassword('');
+    if (m === 'visitor') visitorRegister.reset();
   }
 
   async function handleVisitor(e: React.FormEvent<HTMLFormElement>) {
@@ -83,57 +70,42 @@ export default function Auth() {
       return;
     }
     setError('');
-    setLoading(true);
-    try {
-      const res = await fetch('/api/visitors/identify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: trimmed }),
-      });
-      const data = await res.json();
-      if (res.status === 403) {
-        if (data.error === 'blocked') {
-          navigate('/blocked', { replace: true });
-          return;
-        }
-        setRegistrationOpen(false);
+    const result = await visitorRegister.mutateAsync(trimmed);
+    switch (result.kind) {
+      case 'blocked':
+        navigate('/blocked', { replace: true });
+        break;
+      case 'registrationClosed':
         setError(t('login.registrationClosed'));
-        return;
-      }
-      if (!res.ok) {
-        setError(data.error ?? t('login.couldNotRegister'));
-        return;
-      }
-      localStorage.setItem('sd_visitor_token', data.token);
-      navigate('/', { replace: true });
-    } catch {
-      setError(t('login.couldNotReach'));
-    } finally {
-      setLoading(false);
+        break;
+      case 'error':
+        setError(result.error ?? t('login.couldNotRegister'));
+        break;
+      case 'networkError':
+        setError(t('login.couldNotReach'));
+        break;
+      case 'ok':
+        localStorage.setItem('sd_visitor_token', result.token);
+        navigate('/', { replace: true });
+        break;
     }
   }
 
   async function handleAdmin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError('');
-    setLoading(true);
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? t('login.invalidCredentials'));
-        return;
-      }
-      login(data.token);
-      navigate('/admin', { replace: true });
-    } catch {
-      setError(t('login.couldNotReach'));
-    } finally {
-      setLoading(false);
+    const result = await adminLogin.mutateAsync({ username, password });
+    switch (result.kind) {
+      case 'error':
+        setError(result.error ?? t('login.invalidCredentials'));
+        break;
+      case 'networkError':
+        setError(t('login.couldNotReach'));
+        break;
+      case 'ok':
+        login(result.token);
+        navigate('/admin', { replace: true });
+        break;
     }
   }
 
@@ -151,12 +123,10 @@ export default function Auth() {
           `,
         }}
       >
-        <div className="w-95 max-w-full bg-bg-1 border border-line">
+        <div className="w-96 max-w-full bg-bg-1 border border-line">
           {/* Card header */}
           <div className="flex items-center gap-3 px-6 py-5 border-b border-line">
-            <span className="w-7.5 h-7.5 bg-accent grid place-items-center text-white font-bold text-base font-mono">
-              S
-            </span>
+            <img src="/favicon.svg" alt="ServerDock" className="w-7.5 h-7.5" />
             <b className="text-[17px] font-bold">ServerDock</b>
             <span className="ml-auto font-mono text-xs tracking-[.08em] uppercase text-ink-3 border border-line px-2 py-0.5">
               {isVisitor ? '/access' : '/admin'}
@@ -280,7 +250,9 @@ export default function Auth() {
           {/* Card footer */}
           <div className="flex items-center gap-2 px-6 py-3 border-t border-line font-mono text-xs text-ink-3">
             <span className="w-2 h-2 bg-green rounded-full" />
-            {t('login.footer')}
+            <span className='flex-1'>
+              {t('login.footer')}
+            </span>
             <LangSwitcher className="ml-auto" />
           </div>
         </div>

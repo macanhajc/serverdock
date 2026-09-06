@@ -7,11 +7,14 @@ import {
   settleTransient,
   emitPullProgress,
   emitServerEvent,
+  emitActionFailure,
   getTransient,
   markAdminStop,
   clearAdminStop,
   hasAdminStop,
 } from './statusBus.js';
+import { setActionFailure } from './actionFailures.js';
+import { pushSystemLogLine } from './logBuffer.js';
 import logger from './logger.js';
 
 // Containers must not inherit the host's DNS server: when the host uses a
@@ -24,7 +27,8 @@ const CONTAINER_DNS = (process.env.CONTAINER_DNS ?? '1.1.1.1,8.8.8.8')
   .map((s) => s.trim())
   .filter(Boolean);
 
-function dockerStateToStatus(found) {
+// Exported for direct unit testing — pure mapping, no need to spin up Docker.
+export function dockerStateToStatus(found) {
   const { State, Status } = found;
   if (State === 'running') return 'running';
   if (State === 'restarting') return 'restarting';
@@ -47,6 +51,46 @@ function clientError(message, status) {
 async function findContainer(id) {
   const containers = await docker.listContainers({ all: true });
   return containers.find((c) => c.Names.includes(`/serverdock-${id}`)) ?? null;
+}
+
+// One listContainers() call for every game rather than one per game — the
+// status poll and any per-game status listing (GET /api/servers, join:status)
+// would otherwise hit the Docker API N times every tick for N games.
+async function findContainersByGame(ids) {
+  const byId = new Map();
+  let containers;
+  try {
+    containers = await docker.listContainers({ all: true });
+  } catch {
+    return byId; // Docker unreachable — caller treats missing entries as not_created
+  }
+  const byName = new Map();
+  for (const c of containers) {
+    for (const n of c.Names) byName.set(n, c);
+  }
+  for (const id of ids) {
+    const found = byName.get(`/serverdock-${id}`);
+    if (found) byId.set(id, found);
+  }
+  return byId;
+}
+
+// Batched equivalent of getEffectiveStatus for N games in one Docker round trip.
+export async function getEffectiveStatuses(ids) {
+  const byId = await findContainersByGame(ids);
+  const result = new Map();
+  for (const id of ids) {
+    const t = getTransient(id);
+    if (t) {
+      result.set(id, t);
+      continue;
+    }
+    const found = byId.get(id);
+    let status = found ? dockerStateToStatus(found) : 'not_created';
+    if (status === 'error' && hasAdminStop(id)) status = 'stopped';
+    result.set(id, status);
+  }
+  return result;
 }
 
 async function imageExistsLocally(imageName) {
@@ -125,6 +169,16 @@ async function reportActionFailure(id, action, err) {
     action,
     message: err.message,
   });
+  // Toasts dismiss on their own — leave the failure in the console too so it's
+  // still visible if the admin opens the server detail page afterwards.
+  pushSystemLogLine(id, `Failed to ${action} server: ${err.message}`, 'error');
+
+  // Persisted like resource/crash alerts (see actionFailures.js), but only
+  // for start/restart — see that module's comment for why the other actions
+  // are excluded. Includes the stack trace as a debugging aid.
+  if (action === 'start' || action === 'restart') {
+    emitActionFailure(id, setActionFailure(id, action, err));
+  }
 }
 
 export async function getContainerStatus(id) {

@@ -42,6 +42,50 @@ export interface Connection {
   port: number;
 }
 
+export interface ResourceAlert {
+  cpu: number;
+  memPct: number;
+  message: string;
+  since: string;
+}
+
+export interface CrashInfo {
+  exitCode: number | null;
+  oomKilled: boolean;
+  error: string | null;
+  at: string;
+}
+
+export interface ActionFailureInfo {
+  action: string;
+  message: string;
+  stack: string | null;
+  at: string;
+}
+
+export type ServerEventEntry =
+  | {
+      id: number;
+      type: 'resource_high';
+      data: { cpu: number; memPct: number; message: string };
+      createdAt: string;
+      resolvedAt: string | null;
+    }
+  | {
+      id: number;
+      type: 'crash';
+      data: { exitCode: number | null; oomKilled: boolean; error: string | null };
+      createdAt: string;
+      resolvedAt: string | null;
+    }
+  | {
+      id: number;
+      type: 'action_failed';
+      data: { action: string; message: string; stack: string | null };
+      createdAt: string;
+      resolvedAt: string | null;
+    };
+
 export interface Server {
   id: string;
   name: string;
@@ -52,6 +96,10 @@ export interface Server {
   imageSource: 'public' | 'local';
   imageBuilt?: boolean;
   players: number | null;
+  playerList?: string | null;
+  resourceAlert?: ResourceAlert | null;
+  lastCrash?: CrashInfo | null;
+  actionFailure?: ActionFailureInfo | null;
   connection: Connection | null;
   pinnedEnv: EnvVar[];
   diskUsed?: number;
@@ -63,9 +111,16 @@ export interface Server {
   query?: { type: string; port?: number } | null;
   resources?: { cpuLimit?: number | null; memoryLimit?: number | null };
   environment?: EnvVar[];
-  rcon?: { enabled: boolean; port?: number | null; password?: string };
+  rcon?: {
+    enabled: boolean;
+    port?: number | null;
+    password?: string;
+    listCommand?: string;
+    commands?: { broadcast?: string };
+  };
   startedAt?: string | null;
   lastActiveAt?: string | null;
+  maintenanceSoon?: { at: string; action: string } | null;
 }
 
 export interface ServerStats {
@@ -81,6 +136,31 @@ export interface HostDisk {
   total: number;
 }
 
+export type AdminRole = 'super_admin' | 'admin';
+
+export type Permission =
+  | 'servers:power'
+  | 'servers:reset'
+  | 'games:create'
+  | 'games:edit'
+  | 'games:delete'
+  | 'files:write'
+  | 'backups:manage'
+  | 'console:write'
+  | 'visitors:manage'
+  | 'schedules:manage'
+  | 'settings:manage';
+
+export interface Admin {
+  id: string;
+  username: string;
+  role: AdminRole;
+  createdAt: string;
+  lastLoginAt: string | null;
+  // null means "all" — only super_admin rows carry a null permissions list
+  permissions: Permission[] | null;
+}
+
 export interface Visitor {
   id: string;
   username: string;
@@ -88,6 +168,10 @@ export interface Visitor {
   firstSeen?: string;
   lastSeen?: string;
   blocked: boolean;
+  // Matched by IP against the current network provider's peer list — null
+  // when the visitor's IP has no corresponding peer (e.g. the provider is
+  // down/unconfigured, or the peer was removed since).
+  peer?: { name: string; online: boolean; os?: string; lastSeen?: string } | null;
 }
 
 export interface BlockedIp {
@@ -101,6 +185,8 @@ export interface VpnSelf {
   online: boolean;
 }
 
+export type VpnConnectionType = 'direct' | 'relayed';
+
 export interface VpnPeer {
   id: string;
   name: string;
@@ -108,12 +194,16 @@ export interface VpnPeer {
   os?: string;
   online: boolean;
   lastSeen?: string;
+  latencyMs?: number | null;
+  connectionType?: VpnConnectionType | null;
 }
+
+export type NetworkProviderId = 'netbird' | 'tailscale' | 'wireguard' | 'zerotier' | 'manual';
 
 export interface VpnStatus {
   self?: VpnSelf;
   peers: VpnPeer[];
-  provider?: string;
+  provider?: NetworkProviderId;
 }
 
 export interface LogLine {
@@ -196,5 +286,10 @@ export interface GameTemplate {
   ports?: Array<{ host: number; container: number; protocol: Protocol }>;
   environment?: EnvVar[];
   query?: { type: string; port?: number };
-  rcon?: { enabled: boolean; port?: number; password?: string };
+  rcon?: {
+    enabled: boolean;
+    port?: number;
+    password?: string;
+    commands?: { broadcast?: string };
+  };
 }

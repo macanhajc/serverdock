@@ -5,6 +5,9 @@ export function VisitorRowSkeleton() {
         <div className="h-3.5 w-24 bg-bg-2 rounded-[1px]" />
       </td>
       <td className="px-4 py-3 border-r border-line">
+        <div className="h-3 w-20 bg-bg-2 rounded-[1px]" />
+      </td>
+      <td className="px-4 py-3 border-r border-line">
         <div className="h-3 w-28 bg-bg-2 rounded-[1px]" />
       </td>
       <td className="px-4 py-3 border-r border-line">

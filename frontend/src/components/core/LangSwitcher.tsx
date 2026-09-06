@@ -20,12 +20,12 @@ export function LangSwitcher({ className = '' }: LangSwitcherProps) {
   const active = i18n.language;
 
   return (
-    <div className={`flex items-center gap-1 ${className}`}>
+    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
       {LANGS.map((lang) => (
         <button
           key={lang.code}
           onClick={() => setLang(lang.code)}
-          className={`font-mono text-[10px] px-1.5 py-0.5 border cursor-pointer tracking-wider transition-colors ${
+          className={`font-mono text-[11px] px-2 py-1 border cursor-pointer tracking-wider transition-colors ${
             active === lang.code
               ? 'border-line-2 text-ink bg-bg-3'
               : 'border-line text-ink-3 bg-bg-2 hover:text-ink'
